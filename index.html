@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Tells mobile OS to run in full-screen standalone app mode -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Schedule Sync & Quick View</title>
-    <!-- Link to PWA Manifest -->
     <link rel="manifest" href="manifest.json">
-    <!-- Google Fonts & Tailwind for modern styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -32,7 +29,6 @@
 
     <div class="max-w-2xl mx-auto space-y-6">
         
-        <!-- Header with Current Date -->
         <header class="glass-card rounded-2xl p-6 shadow-xl flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight text-blue-400">Schedule Sync</h1>
@@ -43,7 +39,6 @@
             </div>
         </header>
 
-        <!-- Two-Part Screenshot Upload & Export Section -->
         <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
             <h2 class="text-lg font-semibold text-slate-200">Upload Month Screenshots (Part 1 & Part 2)</h2>
             <p class="text-xs text-slate-400">Upload your two landscape schedule screenshots to capture the full month cleanly.</p>
@@ -63,15 +58,13 @@
                 Process & Parse Schedule
             </button>
 
-            <!-- Export to Apple Calendar Button -->
             <button id="export-btn" onclick="exportCalendar()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-lg shadow-emerald-600/30 hidden">
                 Export to Apple Calendar (.ics)
             </button>
 
-            <div id="status-message" class="text-xs text-center text-slate-400 h-4"></div>
+            <div id="status-message" class="text-xs text-center text-slate-400 h-auto py-1"></div>
         </section>
 
-        <!-- 7-Day Quick Reference List -->
         <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
             <div class="flex justify-between items-center">
                 <h2 class="text-lg font-semibold text-slate-200">Next 7 Days Quick View</h2>
@@ -85,19 +78,13 @@
 
     </div>
 
-    <!-- Frontend Logic Script -->
     <script>
+        // Make sure this matches your exact Render URL scheme
         const API_BASE_URL = 'https://schedule-sync-app.onrender.com';
         let parsedShiftsGlobal = [];
 
-        // Set current date at top
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('en-US', options);
-
-        // Automatically wake up the Render server the moment the app opens
-        window.addEventListener('DOMContentLoaded', () => {
-            fetch(API_BASE_URL).catch(() => {});
-        });
 
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
@@ -131,37 +118,27 @@
 
             if (!file1 && !file2) {
                 statusEl.innerText = "Please upload at least one schedule image.";
-                statusEl.className = "text-xs text-center text-rose-400 h-4";
+                statusEl.className = "text-xs text-center text-rose-400 h-auto py-1";
                 return;
             }
 
-            statusEl.innerText = "Waking server & parsing schedule via OCR...";
-            statusEl.className = "text-xs text-center text-blue-400 h-4";
+            statusEl.innerText = "Processing schedule images via OCR...";
+            statusEl.className = "text-xs text-center text-blue-400 h-auto py-1";
 
             try {
                 parsedShiftsGlobal = [];
 
-                const makeRequest = async (b64) => {
-                    const response = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: b64 })
-                    });
-                    return await response.json();
-                };
-
                 if (file1) {
                     const b64_1 = await fileToBase64(file1);
-                    let data1;
-                    try {
-                        data1 = await makeRequest(b64_1);
-                    } catch (e) {
-                        // Retry once if server was still waking up
-                        await new Promise(r => setTimeout(r, 3000));
-                        data1 = await makeRequest(b64_1);
-                    }
-
-                    if (data1 && data1.success && data1.shiftClassification) {
+                    const res1 = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageBase64: b64_1 })
+                    });
+                    const data1 = await res1.json();
+                    if (!data1.success) throw new Error(data1.error || "Failed part 1");
+                    
+                    if (data1.shiftClassification) {
                         parsedShiftsGlobal.push({
                             shiftType: data1.shiftClassification.shiftType,
                             colorCode: data1.shiftClassification.colorCode,
@@ -173,15 +150,15 @@
 
                 if (file2) {
                     const b64_2 = await fileToBase64(file2);
-                    let data2;
-                    try {
-                        data2 = await makeRequest(b64_2);
-                    } catch (e) {
-                        await new Promise(r => setTimeout(r, 3000));
-                        data2 = await makeRequest(b64_2);
-                    }
+                    const res2 = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageBase64: b64_2 })
+                    });
+                    const data2 = await res2.json();
+                    if (!data2.success) throw new Error(data2.error || "Failed part 2");
 
-                    if (data2 && data2.success && data2.shiftClassification) {
+                    if (data2.shiftClassification) {
                         parsedShiftsGlobal.push({
                             shiftType: data2.shiftClassification.shiftType,
                             colorCode: data2.shiftClassification.colorCode,
@@ -216,12 +193,13 @@
                 }
 
                 statusEl.innerText = "Schedule successfully parsed and ready!";
-                statusEl.className = "text-xs text-center text-emerald-400 h-4";
+                statusEl.className = "text-xs text-center text-emerald-400 h-auto py-1";
 
             } catch (err) {
                 console.error(err);
-                statusEl.innerText = "Error connecting to backend server.";
-                statusEl.className = "text-xs text-center text-rose-400 h-4";
+                // Display the exact technical error on screen so we can see it!
+                statusEl.innerText = "Error: " + err.message;
+                statusEl.className = "text-xs text-center text-rose-400 h-auto py-1";
             }
         }
 
@@ -229,7 +207,7 @@
             const statusEl = document.getElementById('status-message');
             try {
                 statusEl.innerText = "Generating Apple Calendar export file...";
-                statusEl.className = "text-xs text-center text-blue-400 h-4";
+                statusEl.className = "text-xs text-center text-blue-400 h-auto py-1";
 
                 const response = await fetch(`${API_BASE_URL}/api/export-calendar`, {
                     method: 'POST',
@@ -249,11 +227,11 @@
                 a.remove();
 
                 statusEl.innerText = "Calendar file downloaded successfully!";
-                statusEl.className = "text-xs text-center text-emerald-400 h-4";
+                statusEl.className = "text-xs text-center text-emerald-400 h-auto py-1";
             } catch (err) {
                 console.error(err);
-                statusEl.innerText = "Failed to export calendar file.";
-                statusEl.className = "text-xs text-center text-rose-400 h-4";
+                statusEl.innerText = "Export Error: " + err.message;
+                statusEl.className = "text-xs text-center text-rose-400 h-auto py-1";
             }
         }
 
