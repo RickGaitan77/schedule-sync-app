@@ -17,57 +17,91 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Helper function to extract schedule entries from raw OCR text
-function parseShiftsFromText(text) {
+// Grid-aware parser that filters by active month and extracts shift times
+function parseCalendarGrid(text, targetYear, targetMonth) {
     const shifts = [];
     const lines = text.split('\n');
-    
-    // Basic regex or text pattern matching for shifts and dates
-    lines.forEach((line) => {
-        const lower = line.toLowerCase();
-        let shiftType = null;
-        let colorCode = "light-blue";
 
-        if (lower.includes('surgery') || lower.includes('surg')) {
-            shiftType = "Surgery";
-            colorCode = "red";
-        } else if (lower.includes('urgent') || lower.includes('uc')) {
-            shiftType = "Urgent Care";
-            colorCode = "yellow";
-        } else if (lower.includes('room') || lower.includes('exam')) {
-            shiftType = "Rooms";
-            colorCode = "dark-blue";
+    // Regex to find time ranges like "7a - 6p", "12p - 10p", "7:30a - 1p"
+    const shiftTimeRegex = /(\d{1,2}(?::\d{2})?\s*[ap])\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*[ap])/i;
+    
+    // Regex to find standalone day numbers (1-31)
+    const dayNumberRegex = /\b([1-3]?[0-9])\b/g;
+
+    let activeDay = null;
+
+    lines.forEach((line) => {
+        const cleaned = line.trim();
+        if (!cleaned) return;
+
+        // Check if the line contains a day number
+        const dayMatch = cleaned.match(dayNumberRegex);
+        if (dayMatch && cleaned.length <= 3) {
+            const parsedDay = parseInt(dayMatch[0], 10);
+            if (parsedDay >= 1 && parsedDay <= 31) {
+                activeDay = parsedDay;
+            }
         }
 
-        if (shiftType) {
+        // Check if the line contains a shift time range
+        const timeMatch = cleaned.match(shiftTimeRegex);
+        if (timeMatch && activeDay !== null) {
+            const startTimeStr = timeMatch[1].toLowerCase();
+            const lowerTime = cleaned.toLowerCase();
+
+            // Determine shift type based on your hours/rules
+            let shiftType = "General Shift";
+            let colorCode = "light-blue";
+
+            if (lowerTime.includes('12p') || lowerTime.includes('12:00p')) {
+                shiftType = "Urgent Care";
+                colorCode = "dark-blue"; // Highlights 12p - 10p urgent care blocks
+            } else if (lowerTime.includes('surg')) {
+                shiftType = "Surgery";
+                colorCode = "red";
+            }
+
+            // Construct precise ISO date for the target month and year
+            // targetMonth is 0-indexed in JS Date (0 = January, 7 = August)
+            const shiftDate = new Date(targetYear, targetMonth, activeDay);
+
             shifts.push({
                 shiftType,
                 colorCode,
-                details: line.trim(),
-                date: new Date().toISOString() // Fallback or parsed date
+                details: `${timeMatch[1]} to ${timeMatch[2]}`,
+                date: shiftDate.toISOString(),
+                startTimeText: timeMatch[1],
+                endTimeText: timeMatch[2]
             });
         }
     });
 
-    // If no specific keywords matched, return a general record with the raw text snippet
-    if (shifts.length === 0 && text.trim().length > 0) {
-        shifts.push({
-            shiftType: "General Shift",
-            colorCode: "light-blue",
-            details: text.substring(0, 60) + '...',
-            date: new Date().toISOString()
-        });
-    }
-
     return shifts;
+}
+
+// Convert shorthand time strings like "7a" or "10p" into hours (0-23)
+function parseTimeStringToHours(timeStr) {
+    const clean = timeStr.toLowerCase().replace(/\s+/g, '');
+    let isPM = clean.includes('p');
+    let parts = clean.replace(/[ap]/g, '').split(':');
+    let hours = parseInt(parts[0], 10);
+    let minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+
+    if (isPM && hours < 12) hours += 12;
+    if (!isPM && hours === 12) hours = 0;
+
+    return { hours, minutes };
 }
 
 app.post('/api/parse-schedule', async (req, res) => {
     try {
-        const { imageBase64 } = req.body;
+        const { imageBase64, year, month } = req.body;
         if (!imageBase64) {
             return res.status(400).json({ success: false, error: 'No image provided' });
         }
+
+        const targetYear = year !== undefined ? parseInt(year, 10) : new Date().getFullYear();
+        const targetMonth = month !== undefined ? parseInt(month, 10) : new Date().getMonth();
 
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
         const imageBuffer = Buffer.from(base64Data, 'base64');
@@ -78,11 +112,10 @@ app.post('/api/parse-schedule', async (req, res) => {
             { logger: () => {} }
         );
 
-        const detectedShifts = parseShiftsFromText(text || '');
+        const detectedShifts = parseCalendarGrid(text || '', targetYear, targetMonth);
 
         res.json({
             success: true,
-            rawText: text,
             shifts: detectedShifts
         });
 
@@ -99,11 +132,29 @@ app.post('/api/export-calendar', (req, res) => {
 
         if (shifts && Array.isArray(shifts)) {
             shifts.forEach((shift) => {
+                const startDate = new Date(shift.date);
+                const endDate = new Date(shift.date);
+
+                if (shift.startTimeText && shift.endTimeText) {
+                    const startParsed = parseTimeStringToHours(shift.startTimeText);
+                    const endParsed = parseTimeStringToHours(shift.endTimeText);
+
+                    startDate.setHours(startParsed.hours, startParsed.minutes, 0, 0);
+                    endDate.setHours(endParsed.hours, endParsed.minutes, 0, 0);
+
+                    // Handle overnight spans just in case
+                    if (endDate <= startDate) {
+                        endDate.setDate(endDate.getDate() + 1);
+                    }
+                } else {
+                    endDate.setHours(startDate.getHours() + 8);
+                }
+
                 calendar.createEvent({
-                    start: new Date(shift.date || Date.now()),
-                    end: new Date(new Date(shift.date || Date.now()).getTime() + 8 * 3600000),
+                    start: startDate,
+                    end: endDate,
                     summary: `Work: ${shift.shiftType}`,
-                    description: shift.details || 'Parsed via Schedule Sync OCR',
+                    description: `Shift hours: ${shift.details}`,
                 });
             });
         }

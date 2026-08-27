@@ -41,8 +41,14 @@
 
         <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
             <h2 class="text-lg font-semibold text-slate-200">Upload Month Screenshots (Part 1 & Part 2)</h2>
-            <p class="text-xs text-slate-400">Upload your two landscape schedule screenshots to capture the full month cleanly.</p>
+            <p class="text-xs text-slate-400">Select your active target month and upload your two schedule screenshots.</p>
             
+            <!-- Month & Year Selector -->
+            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 flex items-center justify-between">
+                <label class="text-xs font-medium text-slate-300">Target Month & Year:</label>
+                <input type="month" id="target-month-input" class="bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500">
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">Part 1 (First Half)</label>
@@ -55,7 +61,7 @@
             </div>
 
             <button id="process-btn" onclick="processSchedules()" class="w-full mt-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-lg shadow-blue-600/30">
-                Process & Parse Schedule
+                Process & Parse Schedule Grid
             </button>
 
             <button id="export-btn" onclick="exportCalendar()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-lg shadow-emerald-600/30 hidden">
@@ -67,12 +73,12 @@
 
         <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
             <div class="flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-slate-200">Detected Schedule View</h2>
+                <h2 class="text-lg font-semibold text-slate-200">Parsed Schedule Preview</h2>
                 <span class="text-xs text-blue-400 bg-blue-950/50 px-2.5 py-1 rounded-lg border border-blue-800/50">Active View</span>
             </div>
             
             <div id="seven-day-list" class="space-y-3">
-                <p class="text-xs text-slate-400 text-center py-4">Upload your screenshots above to populate your upcoming schedule.</p>
+                <p class="text-xs text-slate-400 text-center py-4">Upload your screenshots above to populate your schedule preview.</p>
             </div>
         </section>
 
@@ -81,8 +87,14 @@
     <script>
         let parsedShiftsGlobal = [];
 
+        // Set default value for month picker to current year-month (e.g., "2026-08")
+        const now = new Date();
+        const yearStr = now.getFullYear();
+        const monthStr = String(now.getMonth() + 1).padStart(2, '0');
+        document.getElementById('target-month-input').value = `${yearStr}-${monthStr}`;
+
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('en-US', options);
+        document.getElementById('current-date-display').innerText = now.toLocaleDateString('en-US', options);
 
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
@@ -96,7 +108,7 @@
         function getColorStyles(code) {
             switch(code) {
                 case 'dark-blue':
-                    return { dot: 'bg-blue-700', badge: 'bg-blue-900/40 text-blue-300 border-blue-800' };
+                    return { dot: 'bg-indigo-600', badge: 'bg-indigo-950/40 text-indigo-300 border-indigo-800' };
                 case 'red':
                     return { dot: 'bg-rose-500', badge: 'bg-rose-950/40 text-rose-300 border-rose-800' };
                 case 'yellow':
@@ -110,6 +122,7 @@
         async function processSchedules() {
             const file1 = document.getElementById('schedule-part-1').files[0];
             const file2 = document.getElementById('schedule-part-2').files[0];
+            const monthInputVal = document.getElementById('target-month-input').value;
             const statusEl = document.getElementById('status-message');
             const listContainer = document.getElementById('seven-day-list');
             const exportBtn = document.getElementById('export-btn');
@@ -120,7 +133,15 @@
                 return;
             }
 
-            statusEl.innerText = "Processing schedule images via OCR...";
+            let targetYear = now.getFullYear();
+            let targetMonth = now.getMonth();
+            if (monthInputVal) {
+                const parts = monthInputVal.split('-');
+                targetYear = parseInt(parts[0], 10);
+                targetMonth = parseInt(parts[1], 10) - 1;
+            }
+
+            statusEl.innerText = "Processing schedule calendar grid via OCR...";
             statusEl.className = "text-xs text-center text-blue-400 h-auto py-1";
 
             try {
@@ -131,7 +152,7 @@
                     const res1 = await fetch('/api/parse-schedule', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: b64_1 })
+                        body: JSON.stringify({ imageBase64: b64_1, year: targetYear, month: targetMonth })
                     });
                     const data1 = await res1.json();
                     if (!data1.success) throw new Error(data1.error || "Failed part 1");
@@ -146,7 +167,7 @@
                     const res2 = await fetch('/api/parse-schedule', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: b64_2 })
+                        body: JSON.stringify({ imageBase64: b64_2, year: targetYear, month: targetMonth })
                     });
                     const data2 = await res2.json();
                     if (!data2.success) throw new Error(data2.error || "Failed part 2");
@@ -160,27 +181,29 @@
                     listContainer.innerHTML = '';
                     parsedShiftsGlobal.forEach((shift, index) => {
                         const styles = getColorStyles(shift.colorCode);
+                        const dateFormatted = new Date(shift.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
                         const itemHtml = `
                             <div class="flex items-center justify-between p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/50">
                                 <div class="flex items-center space-x-3">
                                     <div class="w-3 h-3 rounded-full ${styles.dot}"></div>
                                     <div>
-                                        <p class="text-sm font-medium text-slate-200">Shift #${index + 1}: ${shift.shiftType}</p>
-                                        <p class="text-xs text-slate-400">${shift.details}</p>
+                                        <p class="text-sm font-medium text-slate-200">${dateFormatted} — ${shift.shiftType}</p>
+                                        <p class="text-xs text-slate-400">Hours: ${shift.details}</p>
                                     </div>
                                 </div>
                                 <div class="flex items-center space-x-2">
                                     <span class="text-xs font-semibold px-2.5 py-1 rounded-lg border ${styles.badge}">${shift.shiftType}</span>
-                                    <button onclick="editShift(${index})" class="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-slate-300 transition">Edit</button>
                                 </div>
                             </div>
                         `;
                         listContainer.innerHTML += itemHtml;
                     });
                     exportBtn.classList.remove('hidden');
+                } else {
+                    listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">No shifts detected. Check target month or screenshot quality.</p>';
                 }
 
-                statusEl.innerText = "Schedule successfully parsed and ready!";
+                statusEl.innerText = "Schedule grid successfully parsed!";
                 statusEl.className = "text-xs text-center text-emerald-400 h-auto py-1";
 
             } catch (err) {
@@ -220,10 +243,6 @@
                 statusEl.innerText = "Export Error: " + err.message;
                 statusEl.className = "text-xs text-center text-rose-400 h-auto py-1";
             }
-        }
-
-        function editShift(index) {
-            alert("Edit modal for shift " + (index + 1) + " ready for adjustments!");
         }
     </script>
 </body>
