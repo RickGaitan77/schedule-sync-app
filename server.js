@@ -45,7 +45,7 @@ app.get('/api/get-schedule', (req, res) => {
     }
 });
 
-// Route using global sentence parsing to catch every single date mentioned
+// Route using global pattern matching to extract ALL shifts from continuous text
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -61,17 +61,20 @@ app.post('/api/parse-voice', (req, res) => {
             try { existingShifts = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); } catch(e) {}
         }
 
-        // Split text by common sentence boundaries or line breaks to isolate each shift statement
-        const sentences = text.split(/(?:\.|\n|;)/);
+        const lowerText = text.toLowerCase();
 
-        sentences.forEach(sentence => {
-            const lower = sentence.toLowerCase().trim();
+        // Split text dynamically wherever a new date/day reference appears in the continuous stream
+        // This looks for words like "on", "the", or day numbers to break up continuous dictation safely
+        const segments = lowerText.split(/(?=\b(?:on\s+the|the|[0-9]{1,2}(?:st|nd|rd|th)?)\b)/g);
+
+        segments.forEach(segment => {
+            const lower = segment.trim();
             if (!lower) return;
 
             // Must contain a time range indicator ("to" or "-")
             if (!lower.includes('to') && !lower.includes('-')) return;
 
-            // Extract day number from this specific sentence
+            // Extract day number
             const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
             if (!dayMatch) return;
 
