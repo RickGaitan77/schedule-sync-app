@@ -45,7 +45,7 @@ app.get('/api/get-schedule', (req, res) => {
     }
 });
 
-// Route using global matchAll sweep to capture every explicit shift mentioned
+// Route using the exact working clause separation for multi-day continuous runs
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -63,19 +63,14 @@ app.post('/api/parse-voice', (req, res) => {
 
         const lowerText = text.toLowerCase();
 
-        // We break the continuous text into logical clauses whenever a new day number (1-31) appears,
-        // ensuring every spoken shift gets its own independent evaluation.
-        // This regex looks for day numbers preceded by schedule cues or boundaries.
         const rawClauses = lowerText.split(/(?=\b(?:[1-3]?[0-9])(?:st|nd|rd|th)?\b\s+(?:[0-9]{1,2}|urgent))/g);
 
         rawClauses.forEach(clause => {
             const lower = clause.trim();
             if (!lower) return;
 
-            // Must contain a time indicator ("to" or "-") to be a valid shift
             if (!lower.includes('to') && !lower.includes('-')) return;
 
-            // Extract the explicit day number
             const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
             if (!dayMatch) return;
 
@@ -96,7 +91,6 @@ app.post('/api/parse-voice', (req, res) => {
                 details = "12:00 PM to 10:00 PM";
             } 
             
-            // Extract custom hours
             const timeExtractMatch = lower.match(/([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)/i);
             if (timeExtractMatch && !lower.includes('urgent')) {
                 startTimeText = timeExtractMatch[1].toUpperCase().replace(/\./g, '');
@@ -112,7 +106,6 @@ app.post('/api/parse-voice', (req, res) => {
                 details = `${startTimeText} to ${endTimeText}`;
             }
 
-            // Capture room details
             let roomInfo = "";
             const roomMatch = lower.match(/room\s+([a-z0-9]+)/i);
             if (roomMatch) {
@@ -122,7 +115,6 @@ app.post('/api/parse-voice', (req, res) => {
 
             const shiftDate = new Date(Date.UTC(targetYear, targetMonth, dayNum));
 
-            // Replace or add shift for this specific date
             const existingIndex = existingShifts.findIndex(s => new Date(s.date).getUTCDate() === dayNum && new Date(s.date).getUTCMonth() === targetMonth);
             const newShift = {
                 shiftType,
@@ -166,7 +158,7 @@ app.post('/api/update-schedule', (req, res) => {
     }
 });
 
-// Route to generate and download the .ics Apple Calendar file
+// Route to generate and download the .ics Apple Calendar file anchored to Central Time
 app.post('/api/export-calendar', (req, res) => {
     try {
         let shifts = [];
@@ -178,21 +170,27 @@ app.post('/api/export-calendar', (req, res) => {
 
         if (Array.isArray(shifts)) {
             shifts.forEach((shift) => {
-                const startDate = new Date(shift.date);
-                const endDate = new Date(shift.date);
+                const baseDate = new Date(shift.date);
+                const year = baseDate.getUTCFullYear();
+                const month = baseDate.getUTCMonth();
+                const day = baseDate.getUTCDate();
+
+                const startDate = new Date(year, month, day);
+                const endDate = new Date(year, month, day);
 
                 if (shift.startTimeText && shift.endTimeText) {
                     const startParsed = parseTimeStringToHours(shift.startTimeText);
                     const endParsed = parseTimeStringToHours(shift.endTimeText);
 
-                    startDate.setUTCHours(startParsed.hours, startParsed.minutes, 0, 0);
-                    endDate.setUTCHours(endParsed.hours, endParsed.minutes, 0, 0);
+                    startDate.setHours(startParsed.hours, startParsed.minutes, 0, 0);
+                    endDate.setHours(endParsed.hours, endParsed.minutes, 0, 0);
 
                     if (endDate <= startDate) {
-                        endDate.setUTCDate(endDate.getUTCDate() + 1);
+                        endDate.setDate(endDate.getDate() + 1);
                     }
                 } else {
-                    endDate.setUTCHours(startDate.getUTCHours() + 8);
+                    startDate.setHours(7, 0, 0, 0);
+                    endDate.setHours(18, 0, 0, 0);
                 }
 
                 calendar.createEvent({
@@ -200,6 +198,7 @@ app.post('/api/export-calendar', (req, res) => {
                     end: endDate,
                     summary: `Work: ${shift.shiftType}`,
                     description: `Shift hours: ${shift.details}`,
+                    timezone: 'America/Chicago'
                 });
             });
         }
