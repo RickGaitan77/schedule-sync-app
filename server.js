@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const vision = require('@google-cloud/vision');
 const ical = require('ical-generator').default;
 require('dotenv').config();
 
@@ -11,18 +10,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Serve static frontend files (like index.html and manifest.json)
+// Serve static frontend files
 app.use(express.static(path.join(__dirname)));
 
-// Explicitly serve index.html on root visit so it never fails
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Initialize Google Cloud Vision Client
-const client = new vision.ImageAnnotatorClient();
-
-// Schedule Parsing Route (OCR + Classification)
+// Schedule Parsing Route using direct Google Vision REST API (uses GOOGLE_API_KEY securely)
 app.post('/api/parse-schedule', async (req, res) => {
     try {
         const { imageBase64 } = req.body;
@@ -30,13 +25,40 @@ app.post('/api/parse-schedule', async (req, res) => {
             return res.status(400).json({ success: false, error: 'No image provided' });
         }
 
+        const apiKey = process.env.GOOGLE_API_KEY;
+        if (!apiKey) {
+            return res.status(500).json({ success: false, error: 'GOOGLE_API_KEY is not configured on the server.' });
+        }
+
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-        const imageBuffer = Buffer.from(base64Data, 'base64');
 
-        const [result] = await client.textDetection({ image: { content: imageBuffer } });
-        const detections = result.textAnnotations;
-        const fullText = detections && detections.length > 0 ? detections[0].description : '';
+        // Call Google Vision REST API directly
+        const visionUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+        const visionBody = {
+            requests: [
+                {
+                    image: { content: base64Data },
+                    features: [{ type: 'TEXT_DETECTION' }]
+                }
+            ]
+        };
 
+        const visionResponse = await fetch(visionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(visionBody)
+        });
+
+        const visionData = await visionResponse.json();
+        
+        if (visionData.error) {
+            throw new Error(visionData.error.message || 'Google Vision API error');
+        }
+
+        const annotations = visionData.responses?.[0]?.textAnnotations;
+        const fullText = annotations && annotations.length > 0 ? annotations[0].description : '';
+
+        // Classification logic
         let shiftType = "General Shift";
         let colorCode = "light-blue";
 
@@ -74,7 +96,7 @@ app.post('/api/export-calendar', (req, res) => {
         const calendar = ical({ name: 'Work Schedule' });
 
         if (shifts && Array.isArray(shifts)) {
-            shifts.forEach((shift, index) => {
+            shifts.forEach((shift) => {
                 calendar.createEvent({
                     start: new Date(shift.date || Date.now()),
                     end: new Date(new Date(shift.date || Date.now()).getTime() + 8 * 3600000),
