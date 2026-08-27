@@ -29,7 +29,7 @@ function parseTimeStringToHours(timeStr) {
     return { hours, minutes };
 }
 
-// Route to accurately parse voice transcript line-by-line for multiple shifts
+// Route to robustly extract multiple shifts from anywhere in the transcript
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -42,18 +42,18 @@ app.post('/api/parse-voice', (req, res) => {
 
         const shifts = [];
         
-        // Split by lines or sentence-ending periods to handle multiple entries reliably
-        const segments = text.split(/(?:\.|\n)/);
+        // Split text by common conjunctions or punctuation to isolate individual shift statements
+        const segments = text.split(/(?:\.|\,|\band\b|\bthen\b|\balso\b|\bon\b)/i);
 
         segments.forEach(segment => {
             const lower = segment.toLowerCase().trim();
             if (!lower) return;
 
-            // STRICT FILTER: A valid shift segment MUST contain a time range indicator ("to" or "-")
+            // Must contain a time indicator ("to" or "-") to qualify as a shift
             if (!lower.includes('to') && !lower.includes('-')) return;
 
-            // Extract day number (e.g., "28th", "30th", "August 30")
-            const dayMatch = lower.match(/([1-3]?[0-9])(?:st|nd|rd|th)?/);
+            // Look for a day number in this specific segment
+            const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
             if (!dayMatch) return;
 
             const dayNum = parseInt(dayMatch[1], 10);
@@ -66,7 +66,7 @@ app.post('/api/parse-voice', (req, res) => {
             let endTimeText = "6:00 PM";
             let details = "7:00 AM to 6:00 PM";
 
-            // Check if it's Urgent Care
+            // Check for Urgent Care
             if (lower.includes('urgent') || lower.includes('urgent care') || lower.includes('12 to 10') || lower.includes('12p')) {
                 shiftType = "Urgent Care";
                 colorCode = "dark-blue";
@@ -75,7 +75,7 @@ app.post('/api/parse-voice', (req, res) => {
                 details = "12:00 PM to 10:00 PM";
             } 
             
-            // Extract custom hours spoken (e.g., "7:30 a.m. to 6:00 p.m.", "7 to 5:30")
+            // Extract custom hours spoken (e.g., "7:30 to 6:00", "7:00 to 5:30")
             const timeExtractMatch = lower.match(/([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)/i);
             if (timeExtractMatch && !lower.includes('urgent')) {
                 startTimeText = timeExtractMatch[1].toUpperCase().replace(/\./g, '');
