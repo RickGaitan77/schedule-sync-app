@@ -157,11 +157,14 @@
             100% { transform: scale(1); }
         }
 
-        /* 7-Day Shift Grid */
+        /* Schedule Grid */
         .schedule-grid {
             display: flex;
             flex-direction: column;
             gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 4px;
         }
 
         .shift-row {
@@ -256,7 +259,7 @@
                 <span id="micStatus" style="font-size: 0.75rem; color: var(--accent);">Ready</span>
             </div>
             <div class="recorder-box">
-                <textarea id="transcriptBox" placeholder="Tap microphone and speak your shifts (e.g., 'On the 28th, 7:30 to 6:00, room two...')..."></textarea>
+                <textarea id="transcriptBox" placeholder="Tap microphone and speak your shifts (e.g., 'On September 1st, 7:30 to 6:00...')..."></textarea>
                 <div class="controls">
                     <button id="micBtn">🎙️ Record</button>
                     <button id="processBtn">✨ Process Shifts</button>
@@ -264,14 +267,14 @@
             </div>
         </div>
 
-        <!-- 7-Day View Card -->
+        <!-- Schedule View Card -->
         <div class="glass-card">
             <div class="section-title">
-                <span>Upcoming 7-Day Schedule</span>
+                <span>Scheduled Shifts</span>
                 <span id="syncStatus" style="font-size: 0.75rem; color: #10b981;">Synced</span>
             </div>
             <div id="scheduleGrid" class="schedule-grid">
-                <!-- Dynamically populated 7-day view -->
+                <!-- Dynamically populated view showing all active shifts -->
             </div>
         </div>
 
@@ -317,13 +320,10 @@
             };
 
             recognition.onresult = (event) => {
-                let interimTranscript = '';
                 let finalTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         finalTranscript += event.results[i][0].transcript + ' ';
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
                     }
                 }
                 if (finalTranscript) {
@@ -341,7 +341,7 @@
             };
         } else {
             micBtn.style.display = 'none';
-            micStatus.textContent = 'Voice not supported in browser';
+            micStatus.textContent = 'Voice not supported';
         }
 
         function stopRecording() {
@@ -363,43 +363,37 @@
             }
         });
 
-        // Load saved schedule from server on boot
+        // Load saved schedule from server
         async function fetchSchedule() {
             try {
                 const res = await fetch('/api/get-schedule');
                 const data = await res.json();
                 if (data.success) {
                     currentShifts = data.shifts || [];
-                    render7DayView();
+                    renderScheduleView();
                 }
             } catch (err) {
                 console.error('Failed to load schedule', err);
             }
         }
 
-        // Render upcoming 7 days starting from today or August 2026 anchor
-        function render7DayView() {
+        // Render all saved shifts sorted chronologically so nothing gets hidden across months
+        function renderScheduleView() {
             scheduleGrid.innerHTML = '';
-            
-            // Generate next 7 days for display
-            const today = new Date();
-            // If testing around August 2026, we can anchor or use real local date
-            for (let i = 0; i < 7; i++) {
-                const d = new Date();
-                d.setDate(today.getDate() + i);
-                
-                // Match against saved shifts
-                const matchedShift = currentShifts.find(s => {
-                    const sDate = new Date(s.date);
-                    return sDate.getUTCDate() === d.getDate() && sDate.getUTCMonth() === d.getMonth();
-                });
 
+            if (currentShifts.length === 0) {
+                scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No shifts scheduled yet.</div>';
+                return;
+            }
+
+            currentShifts.forEach((shift) => {
+                const d = new Date(shift.date);
                 const row = document.createElement('div');
-                const isUrgent = matchedShift && matchedShift.shiftType === 'Urgent Care';
-                row.className = `shift-row ${matchedShift ? (isUrgent ? 'urgent-care' : 'has-shift') : ''}`;
+                const isUrgent = shift.shiftType === 'Urgent Care';
+                row.className = `shift-row ${isUrgent ? 'urgent-care' : 'has-shift'}`;
 
-                const dayNameStr = d.toLocaleDateString('en-US', { weekday: 'short' });
-                const monthDayStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const dayNameStr = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+                const monthDayStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
                 row.innerHTML = `
                     <div class="day-info">
@@ -407,21 +401,36 @@
                         <div class="day-date">${monthDayStr}</div>
                     </div>
                     <div class="shift-details">
-                        <div class="shift-type">${matchedShift ? matchedShift.shiftType : 'Off'}</div>
-                        <div class="shift-time">${matchedShift ? matchedShift.details : 'No shift scheduled'}</div>
+                        <div class="shift-type">${shift.shiftType}</div>
+                        <div class="shift-time">${shift.details}</div>
                     </div>
                 `;
                 scheduleGrid.appendChild(row);
-            }
+            });
         }
 
-        // Process Voice Transcript
+        // Process Voice Transcript with Month Detection
         processBtn.addEventListener('click', async () => {
             const text = transcriptBox.value.trim();
             if (!text) {
                 statusMsg.textContent = 'Please record or type your shifts first.';
                 return;
             }
+
+            // Simple month detection from spoken text
+            let targetMonth = 7; // Default August
+            const lower = text.toLowerCase();
+            if (lower.includes('september')) targetMonth = 8;
+            else if (lower.includes('october')) targetMonth = 9;
+            else if (lower.includes('november')) targetMonth = 10;
+            else if (lower.includes('december')) targetMonth = 11;
+            else if (lower.includes('january')) targetMonth = 0;
+            else if (lower.includes('february')) targetMonth = 1;
+            else if (lower.includes('march')) targetMonth = 2;
+            else if (lower.includes('april')) targetMonth = 3;
+            else if (lower.includes('may')) targetMonth = 4;
+            else if (lower.includes('june')) targetMonth = 5;
+            else if (lower.includes('july')) targetMonth = 6;
 
             statusMsg.textContent = 'Parsing shifts...';
             try {
@@ -431,13 +440,13 @@
                     body: JSON.stringify({ 
                         text, 
                         year: 2026, 
-                        month: 7 // August (0-indexed in JS)
+                        month: targetMonth 
                     })
                 });
                 const data = await res.json();
                 if (data.success) {
                     currentShifts = data.shifts;
-                    render7DayView();
+                    renderScheduleView();
                     statusMsg.textContent = 'Shifts successfully parsed and saved!';
                     transcriptBox.value = '';
                 } else {
@@ -466,7 +475,7 @@
                 const data = await res.json();
                 if (data.success) {
                     currentShifts = [];
-                    render7DayView();
+                    renderScheduleView();
                     statusMsg.textContent = 'All shifts cleared.';
                 }
             } catch (err) {
