@@ -17,64 +17,67 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Grid-aware parser that filters by active month and extracts shift times
+// Robust sequential grid parser: collects all days and shifts in order and pairs them up
 function parseCalendarGrid(text, targetYear, targetMonth) {
     const shifts = [];
     const lines = text.split('\n');
 
-    // Regex to find time ranges like "7a - 6p", "12p - 10p", "7:30a - 1p"
+    // Regex to match time blocks like "7a - 6p", "12p - 10p", "7:30a - 6p"
     const shiftTimeRegex = /(\d{1,2}(?::\d{2})?\s*[ap])\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*[ap])/i;
     
-    // Regex to find standalone day numbers (1-31)
-    const dayNumberRegex = /\b([1-3]?[0-9])\b/g;
-
-    let activeDay = null;
+    let foundDays = [];
+    let foundShifts = [];
 
     lines.forEach((line) => {
         const cleaned = line.trim();
         if (!cleaned) return;
 
-        // Check if the line contains a day number
-        const dayMatch = cleaned.match(dayNumberRegex);
-        if (dayMatch && cleaned.length <= 3) {
-            const parsedDay = parseInt(dayMatch[0], 10);
-            if (parsedDay >= 1 && parsedDay <= 31) {
-                activeDay = parsedDay;
+        // Capture standalone day numbers (1-31) representing calendar cells
+        if (/^\b([1-2]?[0-9]|3[0-1])\b$/.test(cleaned)) {
+            const dayNum = parseInt(cleaned, 10);
+            if (!foundDays.includes(dayNum)) {
+                foundDays.push(dayNum);
             }
         }
 
-        // Check if the line contains a shift time range
+        // Capture shift time ranges
         const timeMatch = cleaned.match(shiftTimeRegex);
-        if (timeMatch && activeDay !== null) {
-            const startTimeStr = timeMatch[1].toLowerCase();
-            const lowerTime = cleaned.toLowerCase();
-
-            // Determine shift type based on your hours/rules
+        if (timeMatch) {
             let shiftType = "General Shift";
             let colorCode = "light-blue";
+            const lowerTime = cleaned.toLowerCase();
 
-            if (lowerTime.includes('12p') || lowerTime.includes('12:00p')) {
+            if (lowerTime.includes('12p') || lowerTime.includes('10p')) {
                 shiftType = "Urgent Care";
-                colorCode = "dark-blue"; // Highlights 12p - 10p urgent care blocks
-            } else if (lowerTime.includes('surg')) {
-                shiftType = "Surgery";
-                colorCode = "red";
+                colorCode = "dark-blue";
             }
 
-            // Construct precise ISO date for the target month and year
-            // targetMonth is 0-indexed in JS Date (0 = January, 7 = August)
-            const shiftDate = new Date(targetYear, targetMonth, activeDay);
-
-            shifts.push({
+            foundShifts.push({
                 shiftType,
                 colorCode,
                 details: `${timeMatch[1]} to ${timeMatch[2]}`,
-                date: shiftDate.toISOString(),
                 startTimeText: timeMatch[1],
                 endTimeText: timeMatch[2]
             });
         }
     });
+
+    // Sequentially map each shift to its corresponding day number in order
+    for (let i = 0; i < Math.min(foundShifts.length, foundDays.length); i++) {
+        const day = foundDays[i];
+        const shift = foundShifts[i];
+
+        const shiftDate = new Date(targetYear, targetMonth, day);
+
+        shifts.push({
+            shiftType: shift.shiftType,
+            colorCode: shift.colorCode,
+            details: shift.details,
+            date: shiftDate.toISOString(),
+            startTimeText: shift.startTimeText,
+            endTimeText: shift.endTimeText
+        });
+    }
 
     return shifts;
 }
@@ -142,7 +145,6 @@ app.post('/api/export-calendar', (req, res) => {
                     startDate.setHours(startParsed.hours, startParsed.minutes, 0, 0);
                     endDate.setHours(endParsed.hours, endParsed.minutes, 0, 0);
 
-                    // Handle overnight spans just in case
                     if (endDate <= startDate) {
                         endDate.setDate(endDate.getDate() + 1);
                     }
