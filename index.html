@@ -87,14 +87,17 @@
 
     <!-- Frontend Logic Script -->
     <script>
-        // Live Render Backend URL
         const API_BASE_URL = 'https://schedule-sync-app.onrender.com';
-
         let parsedShiftsGlobal = [];
 
         // Set current date at top
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('en-US', options);
+
+        // Automatically wake up the Render server the moment the app opens
+        window.addEventListener('DOMContentLoaded', () => {
+            fetch(API_BASE_URL).catch(() => {});
+        });
 
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
@@ -138,15 +141,27 @@
             try {
                 parsedShiftsGlobal = [];
 
-                if (file1) {
-                    const b64_1 = await fileToBase64(file1);
-                    const res1 = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
+                const makeRequest = async (b64) => {
+                    const response = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: b64_1 })
+                        body: JSON.stringify({ imageBase64: b64 })
                     });
-                    const data1 = await res1.json();
-                    if (data1.success && data1.shiftClassification) {
+                    return await response.json();
+                };
+
+                if (file1) {
+                    const b64_1 = await fileToBase64(file1);
+                    let data1;
+                    try {
+                        data1 = await makeRequest(b64_1);
+                    } catch (e) {
+                        // Retry once if server was still waking up
+                        await new Promise(r => setTimeout(r, 3000));
+                        data1 = await makeRequest(b64_1);
+                    }
+
+                    if (data1 && data1.success && data1.shiftClassification) {
                         parsedShiftsGlobal.push({
                             shiftType: data1.shiftClassification.shiftType,
                             colorCode: data1.shiftClassification.colorCode,
@@ -158,13 +173,15 @@
 
                 if (file2) {
                     const b64_2 = await fileToBase64(file2);
-                    const res2 = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: b64_2 })
-                    });
-                    const data2 = await res2.json();
-                    if (data2.success && data2.shiftClassification) {
+                    let data2;
+                    try {
+                        data2 = await makeRequest(b64_2);
+                    } catch (e) {
+                        await new Promise(r => setTimeout(r, 3000));
+                        data2 = await makeRequest(b64_2);
+                    }
+
+                    if (data2 && data2.success && data2.shiftClassification) {
                         parsedShiftsGlobal.push({
                             shiftType: data2.shiftClassification.shiftType,
                             colorCode: data2.shiftClassification.colorCode,
