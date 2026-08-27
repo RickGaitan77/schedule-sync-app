@@ -17,14 +17,10 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Redesigned grid parser that scans for all valid shifts across the entire month
+// Smart Shift Matcher: maps recognized text patterns to your exact clinic shift hours
 function parseCalendarGrid(text, targetYear, targetMonth) {
     const shifts = [];
     const lines = text.split('\n');
-
-    // Regex to match time blocks like "7a - 6p", "12p - 10p", "7:30a - 6p"
-    // Also handles common OCR misreads where '7' might be read as '2' or similar if needed
-    const shiftTimeRegex = /(\d{1,2}(?::\d{2})?\s*[ap])\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*[ap])/i;
     const dayNumberRegex = /\b([1-3]?[0-9])\b/;
 
     let lastFoundDay = null;
@@ -33,58 +29,70 @@ function parseCalendarGrid(text, targetYear, targetMonth) {
         const cleaned = line.trim();
         if (!cleaned) return;
 
-        // Check if this line contains a day number (1-31)
+        // Capture the calendar day number
         const dayMatch = cleaned.match(dayNumberRegex);
         if (dayMatch) {
             const num = parseInt(dayMatch[1], 10);
-            // Ensure it's a valid calendar day
             if (num >= 1 && num <= 31) {
                 lastFoundDay = num;
             }
         }
 
-        // Check if this line contains a shift time range
-        const timeMatch = cleaned.match(shiftTimeRegex);
-        if (timeMatch && lastFoundDay !== null) {
+        // Check for shift indicators or text inside the cell
+        const lowerText = cleaned.toLowerCase();
+        
+        // Look for keywords or known shift time cues in the line
+        if (lastFoundDay !== null && (lowerText.includes('7') || lowerText.includes('12') || lowerText.includes('1') || lowerText.includes('2') || lowerText.includes('6') || lowerText.includes('10') || lowerText.includes('shift') || lowerText.includes('urgent'))) {
+            
             let shiftType = "General Shift";
             let colorCode = "light-blue";
-            const lowerTime = cleaned.toLowerCase();
+            let startTimeText = "7:00 AM";
+            let endTimeText = "6:00 PM";
+            let details = "7:00 AM to 6:00 PM";
 
-            // Identify Urgent Care based on your clinic's 12p - 10p hours
-            if (lowerTime.includes('12p') || lowerTime.includes('10p') || lowerTime.includes('12:00p')) {
+            // Determine shift variations based on text clues
+            if (lowerText.includes('12p') || lowerText.includes('10p') || lowerText.includes('urgent')) {
                 shiftType = "Urgent Care";
                 colorCode = "dark-blue";
+                startTimeText = "12:00 PM";
+                endTimeText = "10:00 PM";
+                details = "12:00 PM to 10:00 PM";
+            } else if (lowerText.includes('12') && lowerText.includes('1')) {
+                startTimeText = "12:00 PM";
+                endTimeText = "1:00 PM";
+                details = "12:00 PM to 1:00 PM";
+            } else if (lowerText.includes('1') && lowerText.includes('6')) {
+                startTimeText = "1:00 PM";
+                endTimeText = "6:00 PM";
+                details = "1:00 PM to 6:00 PM";
+            } else if (lowerText.includes('2') && lowerText.includes('6')) {
+                startTimeText = "2:00 PM";
+                endTimeText = "6:00 PM";
+                details = "2:00 PM to 6:00 PM";
             }
 
-            // Clean up common OCR time misreads if necessary (e.g. ensuring standard 7a-6p bounds)
-            let startText = timeMatch[1];
-            let endText = timeMatch[2];
-
-            // Construct the precise ISO date for the target month and year
             const shiftDate = new Date(targetYear, targetMonth, lastFoundDay);
 
-            // Avoid duplicate entries for the exact same day if OCR double-scans a line
+            // Ensure we only record one shift per day
             const existingIndex = shifts.findIndex(s => new Date(s.date).getDate() === lastFoundDay);
             if (existingIndex === -1) {
                 shifts.push({
                     shiftType,
                     colorCode,
-                    details: `${startText} to ${endText}`,
+                    details,
                     date: shiftDate.toISOString(),
-                    startTimeText: startText,
-                    endTimeText: endText
+                    startTimeText,
+                    endTimeText
                 });
             }
         }
     });
 
-    // Sort shifts chronologically by date
     shifts.sort((a, b) => new Date(a.date) - new Date(b.date));
-
     return shifts;
 }
 
-// Convert shorthand time strings like "7a" or "10p" into hours (0-23)
+// Convert time strings into hours (0-23) for calendar export
 function parseTimeStringToHours(timeStr) {
     const clean = timeStr.toLowerCase().replace(/\s+/g, '');
     let isPM = clean.includes('p');
