@@ -67,7 +67,7 @@
 
         <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
             <div class="flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-slate-200">Next 7 Days Quick View</h2>
+                <h2 class="text-lg font-semibold text-slate-200">Detected Schedule View</h2>
                 <span class="text-xs text-blue-400 bg-blue-950/50 px-2.5 py-1 rounded-lg border border-blue-800/50">Active View</span>
             </div>
             
@@ -136,13 +136,8 @@
                     const data1 = await res1.json();
                     if (!data1.success) throw new Error(data1.error || "Failed part 1");
                     
-                    if (data1.shiftClassification) {
-                        parsedShiftsGlobal.push({
-                            shiftType: data1.shiftClassification.shiftType,
-                            colorCode: data1.shiftClassification.colorCode,
-                            details: "Part 1 Schedule",
-                            date: new Date().toISOString()
-                        });
+                    if (data1.shifts && Array.isArray(data1.shifts)) {
+                        parsedShiftsGlobal.push(...data1.shifts);
                     }
                 }
 
@@ -156,13 +151,8 @@
                     const data2 = await res2.json();
                     if (!data2.success) throw new Error(data2.error || "Failed part 2");
 
-                    if (data2.shiftClassification) {
-                        parsedShiftsGlobal.push({
-                            shiftType: data2.shiftClassification.shiftType,
-                            colorCode: data2.shiftClassification.colorCode,
-                            details: "Part 2 Schedule",
-                            date: new Date(Date.now() + 86400000).toISOString()
-                        });
+                    if (data2.shifts && Array.isArray(data2.shifts)) {
+                        parsedShiftsGlobal.push(...data2.shifts);
                     }
                 }
 

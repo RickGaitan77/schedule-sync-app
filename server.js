@@ -11,14 +11,57 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Serve static frontend files
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Schedule Parsing Route using local Tesseract OCR (Free, Self-Contained)
+// Helper function to extract schedule entries from raw OCR text
+function parseShiftsFromText(text) {
+    const shifts = [];
+    const lines = text.split('\n');
+    
+    // Basic regex or text pattern matching for shifts and dates
+    lines.forEach((line) => {
+        const lower = line.toLowerCase();
+        let shiftType = null;
+        let colorCode = "light-blue";
+
+        if (lower.includes('surgery') || lower.includes('surg')) {
+            shiftType = "Surgery";
+            colorCode = "red";
+        } else if (lower.includes('urgent') || lower.includes('uc')) {
+            shiftType = "Urgent Care";
+            colorCode = "yellow";
+        } else if (lower.includes('room') || lower.includes('exam')) {
+            shiftType = "Rooms";
+            colorCode = "dark-blue";
+        }
+
+        if (shiftType) {
+            shifts.push({
+                shiftType,
+                colorCode,
+                details: line.trim(),
+                date: new Date().toISOString() // Fallback or parsed date
+            });
+        }
+    });
+
+    // If no specific keywords matched, return a general record with the raw text snippet
+    if (shifts.length === 0 && text.trim().length > 0) {
+        shifts.push({
+            shiftType: "General Shift",
+            colorCode: "light-blue",
+            details: text.substring(0, 60) + '...',
+            date: new Date().toISOString()
+        });
+    }
+
+    return shifts;
+}
+
 app.post('/api/parse-schedule', async (req, res) => {
     try {
         const { imageBase64 } = req.body;
@@ -29,38 +72,18 @@ app.post('/api/parse-schedule', async (req, res) => {
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
         const imageBuffer = Buffer.from(base64Data, 'base64');
 
-        // Run Tesseract locally
         const { data: { text } } = await Tesseract.recognize(
             imageBuffer,
             'eng',
             { logger: () => {} }
         );
 
-        const fullText = text || '';
-
-        // Classification logic
-        let shiftType = "General Shift";
-        let colorCode = "light-blue";
-
-        const lowerText = fullText.toLowerCase();
-        if (lowerText.includes('surgery') || lowerText.includes('surg')) {
-            shiftType = "Surgery";
-            colorCode = "red";
-        } else if (lowerText.includes('urgent') || lowerText.includes('uc')) {
-            shiftType = "Urgent Care";
-            colorCode = "yellow";
-        } else if (lowerText.includes('room') || lowerText.includes('exam')) {
-            shiftType = "Rooms";
-            colorCode = "dark-blue";
-        }
+        const detectedShifts = parseShiftsFromText(text || '');
 
         res.json({
             success: true,
-            rawText: fullText,
-            shiftClassification: {
-                shiftType,
-                colorCode
-            }
+            rawText: text,
+            shifts: detectedShifts
         });
 
     } catch (error) {
@@ -69,7 +92,6 @@ app.post('/api/parse-schedule', async (req, res) => {
     }
 });
 
-// Calendar Export Route (.ics generation)
 app.post('/api/export-calendar', (req, res) => {
     try {
         const { shifts } = req.body;
