@@ -61,7 +61,6 @@
             margin-top: 2px;
         }
 
-        /* Frosted Glass Card */
         .glass-card {
             background: var(--glass-bg);
             backdrop-filter: blur(16px);
@@ -84,7 +83,6 @@
             align-items: center;
         }
 
-        /* Voice Recorder Area */
         .recorder-box {
             display: flex;
             flex-direction: column;
@@ -157,7 +155,6 @@
             100% { transform: scale(1); }
         }
 
-        /* Schedule Grid */
         .schedule-grid {
             display: flex;
             flex-direction: column;
@@ -175,8 +172,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
-            transition: background 0.2s;
+            gap: 8px;
         }
 
         .shift-row.has-shift {
@@ -191,24 +187,24 @@
 
         .day-info {
             flex-shrink: 0;
-            min-width: 75px;
+            min-width: 85px;
         }
 
         .day-info .day-name {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--text-muted);
             font-weight: 500;
         }
 
         .day-info .day-date {
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 600;
         }
 
         .shift-details {
             text-align: right;
             flex-grow: 1;
-            overflow: hidden;
+            min-width: 0;
         }
 
         .shift-type {
@@ -217,14 +213,13 @@
         }
 
         .shift-time {
-            font-size: 0.78rem;
+            font-size: 0.75rem;
             color: var(--text-muted);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        /* Action Footer */
         .actions-footer {
             display: flex;
             gap: 10px;
@@ -263,18 +258,18 @@
             <p>Voice-to-Schedule Engine</p>
         </header>
 
-        <!-- 1. Scheduled Shifts Module (Moved to Top) -->
+        <!-- 1. Scheduled Shifts Module -->
         <div class="glass-card">
             <div class="section-title">
                 <span>Scheduled Shifts</span>
                 <span id="syncStatus" style="font-size: 0.75rem; color: #10b981;">Synced</span>
             </div>
             <div id="scheduleGrid" class="schedule-grid">
-                <!-- Dynamically populated view showing all active shifts -->
+                <!-- Dynamically populated view -->
             </div>
         </div>
 
-        <!-- 2. Dictate Schedule Module (Moved to Middle) -->
+        <!-- 2. Dictate Schedule Module -->
         <div class="glass-card">
             <div class="section-title">
                 <span>Dictate Schedule</span>
@@ -289,7 +284,7 @@
             </div>
         </div>
 
-        <!-- 3. Export & Management Module (Bottom) -->
+        <!-- 3. Export & Management Module -->
         <div class="glass-card" style="padding: 12px 16px;">
             <div class="actions-footer">
                 <button id="exportBtn">📥 Export .ics Calendar</button>
@@ -312,7 +307,6 @@
 
         let currentShifts = [];
 
-        // Speech Recognition Setup
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let isRecording = false;
@@ -374,7 +368,6 @@
             }
         });
 
-        // Load saved schedule from server
         async function fetchSchedule() {
             try {
                 const res = await fetch('/api/get-schedule');
@@ -388,11 +381,10 @@
             }
         }
 
-        // Render all saved shifts sorted chronologically
         function renderScheduleView() {
             scheduleGrid.innerHTML = '';
 
-            if (currentShifts.length === 0) {
+            if (!currentShifts || currentShifts.length === 0) {
                 scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 15px; font-size: 0.85rem;">No shifts scheduled yet.</div>';
                 return;
             }
@@ -420,7 +412,6 @@
             });
         }
 
-        // Process Voice Transcript with Month Detection
         processBtn.addEventListener('click', async () => {
             const text = transcriptBox.value.trim();
             if (!text) {
@@ -428,7 +419,7 @@
                 return;
             }
 
-            let targetMonth = 7; // Default August
+            let targetMonth = 7;
             const lower = text.toLowerCase();
             if (lower.includes('september')) targetMonth = 8;
             else if (lower.includes('october')) targetMonth = 9;
@@ -468,12 +459,10 @@
             }
         });
 
-        // Export Calendar
         exportBtn.addEventListener('click', () => {
             window.location.href = '/api/export-calendar';
         });
 
-        // Clear All Shifts
         clearBtn.addEventListener('click', async () => {
             if (!confirm('Clear all saved shifts?')) return;
             try {
@@ -493,7 +482,6 @@
             }
         });
 
-        // Initial load
         fetchSchedule();
     </script>
 </body>
