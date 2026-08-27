@@ -22,8 +22,22 @@
             padding: 20px;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            box-sizing: border-box;
         }
         h1 { font-size: 1.5rem; text-align: center; margin-bottom: 20px; }
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .controls-row select {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+            background: #fff;
+        }
         .voice-section {
             display: flex;
             flex-direction: column;
@@ -89,7 +103,38 @@
             justify-content: space-between;
             align-items: center;
         }
-        .shift-card.dark-blue { border-left-color: #5856d6; }
+        /* Frosted High-Visibility Urgent Care Styling */
+        .shift-card.dark-blue {
+            background: linear-gradient(135deg, rgba(88, 86, 214, 0.12), rgba(175, 82, 222, 0.2));
+            border-left: 6px solid #af52de;
+            border-right: 1px solid rgba(175, 82, 222, 0.4);
+            backdrop-filter: blur(10px);
+        }
+        .uc-badge {
+            background-color: #af52de;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-left: 6px;
+        }
+        .card-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .edit-btn {
+            background: #007aff;
+            color: white;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
+        .delete-btn {
+            background: #ff3b30;
+            color: white;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
         .export-btn {
             background-color: #5856d6;
             color: white;
@@ -108,12 +153,33 @@
     <div class="container">
         <h1>Monthly Schedule Voice Input</h1>
         
+        <div class="controls-row">
+            <select id="monthSelect">
+                <option value="0">January</option>
+                <option value="1">February</option>
+                <option value="2">March</option>
+                <option value="3">April</option>
+                <option value="4">May</option>
+                <option value="5">June</option>
+                <option value="6">July</option>
+                <option value="7" selected>August</option>
+                <option value="8">September</option>
+                <option value="9">October</option>
+                <option value="10">November</option>
+                <option value="11">December</option>
+            </select>
+            <select id="yearSelect">
+                <option value="2026" selected>2026</option>
+                <option value="2027">2027</option>
+            </select>
+        </div>
+
         <div class="voice-section">
-            <p class="status-text">Tap the microphone and read your shifts aloud (e.g., "August first, general shift, seven to six. August fifth, urgent care, twelve to ten.")</p>
+            <p class="status-text">Select your target month above, tap the microphone, and read your shifts (e.g., "On the 2nd, 8 to 6:30. On the 3rd, urgent care 12 to 10.")</p>
             <button id="micButton" onclick="toggleListening()">
                 🎙️ Start Listening
             </button>
-            <textarea id="transcriptInput" placeholder="Your spoken text will appear here in real-time. You can also type or edit notes manually..."></textarea>
+            <textarea id="transcriptInput" placeholder="Your spoken text will appear here in real-time..."></textarea>
             <button id="processBtn" onclick="parseVoiceText()">Process & Build Schedule</button>
         </div>
 
@@ -129,7 +195,6 @@
         let isRecording = false;
         let parsedShifts = [];
 
-        // Initialize Speech Recognition API
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
@@ -138,17 +203,12 @@
             recognition.lang = 'en-US';
 
             recognition.onresult = (event) => {
-                let interimTranscript = '';
                 let finalTranscript = '';
-
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         finalTranscript += event.results[i][0].transcript + ' ';
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
                     }
                 }
-
                 const textarea = document.getElementById('transcriptInput');
                 if (finalTranscript) {
                     textarea.value += (textarea.value ? ' ' : '') + finalTranscript;
@@ -156,13 +216,12 @@
             };
 
             recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
                 stopListening();
             };
 
             recognition.onend = () => {
                 if (isRecording) {
-                    try { recognition.start(); } catch(e) {} // Keep listening if active
+                    try { recognition.start(); } catch(e) {}
                 }
             };
         } else {
@@ -198,6 +257,9 @@
 
         async function parseVoiceText() {
             const text = document.getElementById('transcriptInput').value;
+            const month = parseInt(document.getElementById('monthSelect').value, 10);
+            const year = parseInt(document.getElementById('yearSelect').value, 10);
+
             if (!text.trim()) {
                 alert('Please speak or type your schedule notes first.');
                 return;
@@ -206,7 +268,7 @@
             const response = await fetch('/api/parse-voice', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, year: 2026, month: 7 }) // August 2026 (Month index 7)
+                body: JSON.stringify({ text, year, month })
             });
 
             const data = await response.json();
@@ -228,25 +290,46 @@
             count.textContent = parsedShifts.length;
 
             if (parsedShifts.length === 0) {
-                list.innerHTML = '<p style="color: #666;">No shifts detected. Try phrasing like "August 1st general shift 7 to 6".</p>';
+                list.innerHTML = '<p style="color: #666;">No shifts detected with valid times. Try phrasing like "On the 2nd, 8 to 6:30".</p>';
                 return;
             }
 
             parsedShifts.forEach((shift, index) => {
                 const dateObj = new Date(shift.date);
-                const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
                 
+                const isUC = shift.shiftType === "Urgent Care";
+                const badgeHtml = isUC ? '<span class="uc-badge">URGENT CARE</span>' : '';
+
                 const card = document.createElement('div');
                 card.className = `shift-card ${shift.colorCode}`;
                 card.innerHTML = `
                     <div>
-                        <strong>${dateStr}</strong><br>
+                        <strong>${dateStr}</strong> ${badgeHtml}<br>
                         <small>${shift.shiftType}: ${shift.details}</small>
                     </div>
-                    <button onclick="removeShift(${index})" style="background: #ff3b30; color: white; padding: 6px 10px; font-size: 0.8rem;">Delete</button>
+                    <div class="card-actions">
+                        <button class="edit-btn" onclick="editShift(${index})">Edit</button>
+                        <button class="delete-btn" onclick="removeShift(${index})">Delete</button>
+                    </div>
                 `;
                 list.appendChild(card);
             });
+        }
+
+        function editShift(index) {
+            const shift = parsedShifts[index];
+            const newDetails = prompt("Edit shift hours (e.g., 8:00 AM to 6:30 PM):", shift.details);
+            if (newDetails !== null) {
+                shift.details = newDetails;
+                // Quick parse start/end split if formatted with "to"
+                if (newDetails.toLowerCase().includes('to')) {
+                    const parts = newDetails.split(/to/i);
+                    shift.startTimeText = parts[0].trim();
+                    shift.endTimeText = parts[1].trim();
+                }
+                renderShifts();
+            }
         }
 
         function removeShift(index) {

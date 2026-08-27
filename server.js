@@ -15,7 +15,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Helper: Convert time strings like "7:00 AM" or "10:00 PM" into hours/minutes
+// Helper: Convert time strings into hours/minutes
 function parseTimeStringToHours(timeStr) {
     const clean = timeStr.toLowerCase().replace(/\s+/g, '');
     let isPM = clean.includes('pm') || clean.includes('p');
@@ -29,7 +29,7 @@ function parseTimeStringToHours(timeStr) {
     return { hours, minutes };
 }
 
-// Route to parse voice-transcribed text into structured calendar shifts
+// Route to parse voice text with strict time requirement and dropdown month/year
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -38,56 +38,65 @@ app.post('/api/parse-voice', (req, res) => {
         }
 
         const targetYear = year !== undefined ? parseInt(year, 10) : 2026;
-        const targetMonth = month !== undefined ? parseInt(month, 10) : 7; // August (0-indexed: 7)
+        const targetMonth = month !== undefined ? parseInt(month, 10) : 7; // Default August
 
         const shifts = [];
         
-        // Split transcript into clauses based on periods, commas, or conjunctions
+        // Split transcript into distinct sentences or clauses
         const segments = text.split(/(?:\.|\,|\b(?:and|also|then|next)\b)/i);
 
         segments.forEach(segment => {
             const lower = segment.toLowerCase().trim();
             if (!lower) return;
 
-            // Extract day number (matches "1st", "August 5th", "the 12th", etc.)
-            const dayMatch = lower.match(/(?:august\s*)?([1-3]?[0-9])(?:st|nd|rd|th)?/);
+            // STRICT FILTER: A valid shift segment MUST contain a time range indicator (like "to" or "-")
+            if (!lower.includes('to') && !lower.includes('-')) return;
+
+            // Extract day number
+            const dayMatch = lower.match(/(?:day|on\s+the|date)?\s*([1-3]?[0-9])(?:st|nd|rd|th)?/);
             if (!dayMatch) return;
 
             const dayNum = parseInt(dayMatch[1], 10);
             if (dayNum < 1 || dayNum > 31) return;
 
-            // Default shift settings (General Shift: 7:00 AM to 6:00 PM)
+            // Default shift settings
             let shiftType = "General Shift";
             let colorCode = "light-blue";
             let startTimeText = "7:00 AM";
             let endTimeText = "6:00 PM";
             let details = "7:00 AM to 6:00 PM";
 
-            // Identify Urgent Care or custom variation shifts
+            // Check if it's Urgent Care
             if (lower.includes('urgent') || lower.includes('urgent care') || lower.includes('12 to 10') || lower.includes('12p')) {
                 shiftType = "Urgent Care";
                 colorCode = "dark-blue";
                 startTimeText = "12:00 PM";
                 endTimeText = "10:00 PM";
                 details = "12:00 PM to 10:00 PM";
-            } else if (lower.includes('1 to 6') || lower.includes('one to six')) {
-                startTimeText = "1:00 PM";
-                endTimeText = "6:00 PM";
-                details = "1:00 PM to 6:00 PM";
-            } else if (lower.includes('2 to 6') || lower.includes('two to six')) {
-                startTimeText = "2:00 PM";
-                endTimeText = "6:00 PM";
-                details = "2:00 PM to 6:00 PM";
-            } else if (lower.includes('12 to 1') || lower.includes('twelve to one')) {
-                startTimeText = "12:00 PM";
-                endTimeText = "1:00 PM";
-                details = "12:00 PM to 1:00 PM";
+            } 
+            
+            // Extract custom hours if spoken (e.g., "8 to 6:30", "1 to 6", "2 to 6")
+            const timeExtractMatch = lower.match(/([0-9]{1,2}(?::[0-9]{2})?\s*(?:am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}(?::[0-9]{2})?\s*(?:am|pm)?)/i);
+            if (timeExtractMatch && !lower.includes('urgent')) {
+                startTimeText = timeExtractMatch[1].toUpperCase();
+                endTimeText = timeExtractMatch[2].toUpperCase();
+                
+                // Ensure AM/PM context if omitted (assume standard daytime work hours)
+                if (!startTimeText.includes('AM') && !startTimeText.includes('PM')) {
+                    const startHr = parseInt(startTimeText, 10);
+                    startTimeText += (startHr < 7 ? ' PM' : ' AM');
+                }
+                if (!endTimeText.includes('AM') && !endTimeText.includes('PM')) {
+                    endTimeText += ' PM';
+                }
+                details = `${startTimeText} to ${endTimeText}`;
             }
 
-            const shiftDate = new Date(targetYear, targetMonth, dayNum);
+            // Construct UTC date to prevent timezone shift bugs
+            const shiftDate = new Date(Date.UTC(targetYear, targetMonth, dayNum));
 
-            // Avoid duplicates for the same day
-            const existingIndex = shifts.findIndex(s => new Date(s.date).getDate() === dayNum);
+            // Prevent duplicate entries for the same day
+            const existingIndex = shifts.findIndex(s => new Date(s.date).getUTCDate() === dayNum);
             if (existingIndex === -1) {
                 shifts.push({
                     shiftType,
@@ -129,14 +138,14 @@ app.post('/api/export-calendar', (req, res) => {
                     const startParsed = parseTimeStringToHours(shift.startTimeText);
                     const endParsed = parseTimeStringToHours(shift.endTimeText);
 
-                    startDate.setHours(startParsed.hours, startParsed.minutes, 0, 0);
-                    endDate.setHours(endParsed.hours, endParsed.minutes, 0, 0);
+                    startDate.setUTCHours(startParsed.hours, startParsed.minutes, 0, 0);
+                    endDate.setUTCHours(endParsed.hours, endParsed.minutes, 0, 0);
 
                     if (endDate <= startDate) {
-                        endDate.setDate(endDate.getDate() + 1);
+                        endDate.setUTCDate(endDate.getUTCDate() + 1);
                     }
                 } else {
-                    endDate.setHours(startDate.getHours() + 8);
+                    endDate.setUTCHours(startDate.getUTCHours() + 8);
                 }
 
                 calendar.createEvent({
