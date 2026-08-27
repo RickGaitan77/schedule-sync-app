@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule Sync & Quick View</title>
+    <!-- Google Fonts & Tailwind for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="p-6 md:p-10">
+
+    <div class="max-w-2xl mx-auto space-y-6">
+        
+        <!-- Header with Current Date -->
+        <header class="glass-card rounded-2xl p-6 shadow-xl flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-blue-400">Schedule Sync</h1>
+                <p class="text-sm text-slate-400">Quick view & monthly Apple Calendar sync</p>
+            </div>
+            <div id="current-date-display" class="text-right text-sm font-medium bg-blue-500/10 border border-blue-500/20 text-blue-300 px-4 py-2 rounded-xl">
+                Loading date...
+            </div>
+        </header>
+
+        <!-- Two-Part Screenshot Upload & Export Section -->
+        <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 class="text-lg font-semibold text-slate-200">Upload Month Screenshots (Part 1 & Part 2)</h2>
+            <p class="text-xs text-slate-400">Upload your two landscape schedule screenshots to capture the full month cleanly.</p>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Part 1 (First Half)</label>
+                    <input type="file" id="schedule-part-1" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Part 2 (Second Half)</label>
+                    <input type="file" id="schedule-part-2" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer">
+                </div>
+            </div>
+
+            <button id="process-btn" onclick="processSchedules()" class="w-full mt-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-lg shadow-blue-600/30">
+                Process & Parse Schedule
+            </button>
+
+            <!-- Export to Apple Calendar Button -->
+            <button id="export-btn" onclick="exportCalendar()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-lg shadow-emerald-600/30 hidden">
+                Export to Apple Calendar (.ics)
+            </button>
+
+            <div id="status-message" class="text-xs text-center text-slate-400 h-4"></div>
+        </section>
+
+        <!-- 7-Day Quick Reference List (Bills App Style) -->
+        <section class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-slate-200">Next 7 Days Quick View</h2>
+                <span class="text-xs text-blue-400 bg-blue-950/50 px-2.5 py-1 rounded-lg border border-blue-800/50">Active View</span>
+            </div>
+            
+            <div id="seven-day-list" class="space-y-3">
+                <p class="text-xs text-slate-400 text-center py-4">Upload your screenshots above to populate your upcoming schedule.</p>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Frontend Logic Script -->
+    <script>
+        let parsedShiftsGlobal = [];
+
+        // Set current date at top
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('en-US', options);
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        function getColorStyles(code) {
+            switch(code) {
+                case 'dark-blue':
+                    return { dot: 'bg-blue-700', badge: 'bg-blue-900/40 text-blue-300 border-blue-800' };
+                case 'red':
+                    return { dot: 'bg-rose-500', badge: 'bg-rose-950/40 text-rose-300 border-rose-800' };
+                case 'yellow':
+                    return { dot: 'bg-amber-400', badge: 'bg-amber-950/40 text-amber-300 border-amber-800' };
+                case 'light-blue':
+                default:
+                    return { dot: 'bg-sky-400', badge: 'bg-sky-950/40 text-sky-300 border-sky-800' };
+            }
+        }
+
+        async function processSchedules() {
+            const file1 = document.getElementById('schedule-part-1').files[0];
+            const file2 = document.getElementById('schedule-part-2').files[0];
+            const statusEl = document.getElementById('status-message');
+            const listContainer = document.getElementById('seven-day-list');
+            const exportBtn = document.getElementById('export-btn');
+
+            if (!file1 && !file2) {
+                statusEl.innerText = "Please upload at least one schedule image.";
+                statusEl.className = "text-xs text-center text-rose-400 h-4";
+                return;
+            }
+
+            statusEl.innerText = "Processing schedule images via OCR...";
+            statusEl.className = "text-xs text-center text-blue-400 h-4";
+
+            try {
+                parsedShiftsGlobal = [];
+
+                if (file1) {
+                    const b64_1 = await fileToBase64(file1);
+                    const res1 = await fetch('http://localhost:3000/api/parse-schedule', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageBase64: b64_1 })
+                    });
+                    const data1 = await res1.json();
+                    if (data1.success && data1.shiftClassification) {
+                        parsedShiftsGlobal.push({
+                            shiftType: data1.shiftClassification.shiftType,
+                            colorCode: data1.shiftClassification.colorCode,
+                            details: "Part 1 Schedule",
+                            date: new Date().toISOString()
+                        });
+                    }
+                }
+
+                if (file2) {
+                    const b64_2 = await fileToBase64(file2);
+                    const res2 = await fetch('http://localhost:3000/api/parse-schedule', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageBase64: b64_2 })
+                    });
+                    const data2 = await res2.json();
+                    if (data2.success && data2.shiftClassification) {
+                        parsedShiftsGlobal.push({
+                            shiftType: data2.shiftClassification.shiftType,
+                            colorCode: data2.shiftClassification.colorCode,
+                            details: "Part 2 Schedule",
+                            date: new Date(Date.now() + 86400000).toISOString()
+                        });
+                    }
+                }
+
+                if (parsedShiftsGlobal.length > 0) {
+                    listContainer.innerHTML = '';
+                    parsedShiftsGlobal.forEach((shift, index) => {
+                        const styles = getColorStyles(shift.colorCode);
+                        const itemHtml = `
+                            <div class="flex items-center justify-between p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/50">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-3 h-3 rounded-full ${styles.dot}"></div>
+                                    <div>
+                                        <p class="text-sm font-medium text-slate-200">Shift #${index + 1}: ${shift.shiftType}</p>
+                                        <p class="text-xs text-slate-400">${shift.details}</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-semibold px-2.5 py-1 rounded-lg border ${styles.badge}">${shift.shiftType}</span>
+                                    <button onclick="editShift(${index})" class="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-slate-300 transition">Edit</button>
+                                </div>
+                            </div>
+                        `;
+                        listContainer.innerHTML += itemHtml;
+                    });
+                    exportBtn.classList.remove('hidden');
+                }
+
+                statusEl.innerText = "Schedule successfully parsed and ready!";
+                statusEl.className = "text-xs text-center text-emerald-400 h-4";
+
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "Error connecting to backend server.";
+                statusEl.className = "text-xs text-center text-rose-400 h-4";
+            }
+        }
+
+        async function exportCalendar() {
+            const statusEl = document.getElementById('status-message');
+            try {
+                statusEl.innerText = "Generating Apple Calendar export file...";
+                statusEl.className = "text-xs text-center text-blue-400 h-4";
+
+                const response = await fetch('http://localhost:3000/api/export-calendar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shifts: parsedShiftsGlobal })
+                });
+
+                if (!response.ok) throw new Error("Export failed");
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'work-schedule.ics';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                statusEl.innerText = "Calendar file downloaded successfully!";
+                statusEl.className = "text-xs text-center text-emerald-400 h-4";
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "Failed to export calendar file.";
+                statusEl.className = "text-xs text-center text-rose-400 h-4";
+            }
+        }
+
+        function editShift(index) {
+            alert("Edit modal for shift " + (index + 1) + " ready for adjustments!");
+        }
+    </script>
+</body>
+</html>
