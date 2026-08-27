@@ -28,7 +28,7 @@
             background: var(--bg-gradient);
             color: var(--text-main);
             min-height: 100vh;
-            padding: 20px;
+            padding: 16px;
             display: flex;
             justify-content: center;
         }
@@ -38,16 +38,16 @@
             max-width: 600px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 16px;
         }
 
         header {
             text-align: center;
-            padding: 10px 0;
+            padding: 6px 0;
         }
 
         header h1 {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: 600;
             letter-spacing: -0.5px;
             background: linear-gradient(to right, #38bdf8, #818cf8);
@@ -56,9 +56,9 @@
         }
 
         header p {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
         /* Frosted Glass Card */
@@ -68,17 +68,17 @@
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
             border-radius: 20px;
-            padding: 20px;
+            padding: 16px;
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
         }
 
         .section-title {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -88,18 +88,18 @@
         .recorder-box {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 10px;
         }
 
         textarea {
             width: 100%;
-            height: 90px;
+            height: 80px;
             background: rgba(0, 0, 0, 0.2);
             border: 1px solid var(--glass-border);
             border-radius: 12px;
-            padding: 12px;
+            padding: 10px;
             color: var(--text-main);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             resize: none;
             outline: none;
             transition: border-color 0.2s;
@@ -116,17 +116,17 @@
 
         button {
             flex: 1;
-            padding: 12px;
+            padding: 10px;
             border-radius: 12px;
             border: none;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         #micBtn {
@@ -161,8 +161,8 @@
         .schedule-grid {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            max-height: 400px;
+            gap: 8px;
+            max-height: 360px;
             overflow-y: auto;
             padding-right: 4px;
         }
@@ -170,11 +170,12 @@
         .shift-row {
             background: rgba(255, 255, 255, 0.04);
             border: 1px solid var(--glass-border);
-            border-radius: 14px;
-            padding: 14px;
+            border-radius: 12px;
+            padding: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
             transition: background 0.2s;
         }
 
@@ -188,29 +189,39 @@
             border-color: rgba(244, 63, 94, 0.3);
         }
 
+        .day-info {
+            flex-shrink: 0;
+            min-width: 75px;
+        }
+
         .day-info .day-name {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
             font-weight: 500;
         }
 
         .day-info .day-date {
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 600;
         }
 
         .shift-details {
             text-align: right;
+            flex-grow: 1;
+            overflow: hidden;
         }
 
         .shift-type {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 600;
         }
 
         .shift-time {
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* Action Footer */
@@ -238,9 +249,9 @@
 
         .status-msg {
             text-align: center;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: var(--text-muted);
-            min-height: 20px;
+            min-height: 18px;
         }
     </style>
 </head>
@@ -252,22 +263,7 @@
             <p>Voice-to-Schedule Engine</p>
         </header>
 
-        <!-- Voice Input Card -->
-        <div class="glass-card">
-            <div class="section-title">
-                <span>Dictate Schedule</span>
-                <span id="micStatus" style="font-size: 0.75rem; color: var(--accent);">Ready</span>
-            </div>
-            <div class="recorder-box">
-                <textarea id="transcriptBox" placeholder="Tap microphone and speak your shifts (e.g., 'On September 1st, 7:30 to 6:00...')..."></textarea>
-                <div class="controls">
-                    <button id="micBtn">🎙️ Record</button>
-                    <button id="processBtn">✨ Process Shifts</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Schedule View Card -->
+        <!-- 1. Scheduled Shifts Module (Moved to Top) -->
         <div class="glass-card">
             <div class="section-title">
                 <span>Scheduled Shifts</span>
@@ -278,8 +274,23 @@
             </div>
         </div>
 
-        <!-- Export & Management Card -->
-        <div class="glass-card" style="padding: 14px 20px;">
+        <!-- 2. Dictate Schedule Module (Moved to Middle) -->
+        <div class="glass-card">
+            <div class="section-title">
+                <span>Dictate Schedule</span>
+                <span id="micStatus" style="font-size: 0.75rem; color: var(--accent);">Ready</span>
+            </div>
+            <div class="recorder-box">
+                <textarea id="transcriptBox" placeholder="Tap microphone and speak your shifts (e.g., 'On September 1st, 7:30 to 6:00 room 5...')..."></textarea>
+                <div class="controls">
+                    <button id="micBtn">🎙️ Record</button>
+                    <button id="processBtn">✨ Process Shifts</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Export & Management Module (Bottom) -->
+        <div class="glass-card" style="padding: 12px 16px;">
             <div class="actions-footer">
                 <button id="exportBtn">📥 Export .ics Calendar</button>
                 <button id="clearBtn">Clear All</button>
@@ -377,12 +388,12 @@
             }
         }
 
-        // Render all saved shifts sorted chronologically so nothing gets hidden across months
+        // Render all saved shifts sorted chronologically
         function renderScheduleView() {
             scheduleGrid.innerHTML = '';
 
             if (currentShifts.length === 0) {
-                scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No shifts scheduled yet.</div>';
+                scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 15px; font-size: 0.85rem;">No shifts scheduled yet.</div>';
                 return;
             }
 
@@ -417,7 +428,6 @@
                 return;
             }
 
-            // Simple month detection from spoken text
             let targetMonth = 7; // Default August
             const lower = text.toLowerCase();
             if (lower.includes('september')) targetMonth = 8;
