@@ -45,7 +45,7 @@ app.get('/api/get-schedule', (req, res) => {
     }
 });
 
-// Route to parse voice text and save to server storage
+// Route to parse continuous voice text and extract all shifts anywhere in the stream
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -61,14 +61,18 @@ app.post('/api/parse-voice', (req, res) => {
             try { existingShifts = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); } catch(e) {}
         }
 
-        const segments = text.split(/(?:\.|\,|\band\b|\bthen\b|\balso\b|\bon\b)/i);
+        // Clean text and split on loose boundaries like "and", "then", or commas to group phrases
+        const textLower = text.toLowerCase();
+        const chunks = textLower.split(/(?:\band\b|\bthen\b|\bfa\b|,|\.)/i);
 
-        segments.forEach(segment => {
-            const lower = segment.toLowerCase().trim();
+        chunks.forEach(chunk => {
+            const lower = chunk.trim();
             if (!lower) return;
 
+            // Must contain a time range indicator to be a shift
             if (!lower.includes('to') && !lower.includes('-')) return;
 
+            // Find any day number (1-31) in this phrase chunk
             const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
             if (!dayMatch) return;
 
@@ -89,6 +93,7 @@ app.post('/api/parse-voice', (req, res) => {
                 details = "12:00 PM to 10:00 PM";
             } 
             
+            // Extract custom hours spoken (e.g., "7:30 to 6:00", "7 to 5:30")
             const timeExtractMatch = lower.match(/([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)/i);
             if (timeExtractMatch && !lower.includes('urgent')) {
                 startTimeText = timeExtractMatch[1].toUpperCase().replace(/\./g, '');
@@ -104,6 +109,7 @@ app.post('/api/parse-voice', (req, res) => {
                 details = `${startTimeText} to ${endTimeText}`;
             }
 
+            // Capture room details (e.g., "room two", "room 4")
             let roomInfo = "";
             const roomMatch = lower.match(/room\s+([a-z0-9]+)/i);
             if (roomMatch) {
@@ -133,7 +139,6 @@ app.post('/api/parse-voice', (req, res) => {
 
         existingShifts.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-        // Save to file storage
         fs.writeFileSync(STORAGE_FILE, JSON.stringify(existingShifts, null, 2));
 
         res.json({
