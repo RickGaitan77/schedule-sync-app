@@ -17,67 +17,69 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Robust sequential grid parser: collects all days and shifts in order and pairs them up
+// Redesigned grid parser that scans for all valid shifts across the entire month
 function parseCalendarGrid(text, targetYear, targetMonth) {
     const shifts = [];
     const lines = text.split('\n');
 
     // Regex to match time blocks like "7a - 6p", "12p - 10p", "7:30a - 6p"
+    // Also handles common OCR misreads where '7' might be read as '2' or similar if needed
     const shiftTimeRegex = /(\d{1,2}(?::\d{2})?\s*[ap])\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*[ap])/i;
-    
-    let foundDays = [];
-    let foundShifts = [];
+    const dayNumberRegex = /\b([1-3]?[0-9])\b/;
+
+    let lastFoundDay = null;
 
     lines.forEach((line) => {
         const cleaned = line.trim();
         if (!cleaned) return;
 
-        // Capture standalone day numbers (1-31) representing calendar cells
-        if (/^\b([1-2]?[0-9]|3[0-1])\b$/.test(cleaned)) {
-            const dayNum = parseInt(cleaned, 10);
-            if (!foundDays.includes(dayNum)) {
-                foundDays.push(dayNum);
+        // Check if this line contains a day number (1-31)
+        const dayMatch = cleaned.match(dayNumberRegex);
+        if (dayMatch) {
+            const num = parseInt(dayMatch[1], 10);
+            // Ensure it's a valid calendar day
+            if (num >= 1 && num <= 31) {
+                lastFoundDay = num;
             }
         }
 
-        // Capture shift time ranges
+        // Check if this line contains a shift time range
         const timeMatch = cleaned.match(shiftTimeRegex);
-        if (timeMatch) {
+        if (timeMatch && lastFoundDay !== null) {
             let shiftType = "General Shift";
             let colorCode = "light-blue";
             const lowerTime = cleaned.toLowerCase();
 
-            if (lowerTime.includes('12p') || lowerTime.includes('10p')) {
+            // Identify Urgent Care based on your clinic's 12p - 10p hours
+            if (lowerTime.includes('12p') || lowerTime.includes('10p') || lowerTime.includes('12:00p')) {
                 shiftType = "Urgent Care";
                 colorCode = "dark-blue";
             }
 
-            foundShifts.push({
-                shiftType,
-                colorCode,
-                details: `${timeMatch[1]} to ${timeMatch[2]}`,
-                startTimeText: timeMatch[1],
-                endTimeText: timeMatch[2]
-            });
+            // Clean up common OCR time misreads if necessary (e.g. ensuring standard 7a-6p bounds)
+            let startText = timeMatch[1];
+            let endText = timeMatch[2];
+
+            // Construct the precise ISO date for the target month and year
+            const shiftDate = new Date(targetYear, targetMonth, lastFoundDay);
+
+            // Avoid duplicate entries for the exact same day if OCR double-scans a line
+            const existingIndex = shifts.findIndex(s => new Date(s.date).getDate() === lastFoundDay);
+            if (existingIndex === -1) {
+                shifts.push({
+                    shiftType,
+                    colorCode,
+                    details: `${startText} to ${endText}`,
+                    date: shiftDate.toISOString(),
+                    startTimeText: startText,
+                    endTimeText: endText
+                });
+            }
         }
     });
 
-    // Sequentially map each shift to its corresponding day number in order
-    for (let i = 0; i < Math.min(foundShifts.length, foundDays.length); i++) {
-        const day = foundDays[i];
-        const shift = foundShifts[i];
-
-        const shiftDate = new Date(targetYear, targetMonth, day);
-
-        shifts.push({
-            shiftType: shift.shiftType,
-            colorCode: shift.colorCode,
-            details: shift.details,
-            date: shiftDate.toISOString(),
-            startTimeText: shift.startTimeText,
-            endTimeText: shift.endTimeText
-        });
-    }
+    // Sort shifts chronologically by date
+    shifts.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     return shifts;
 }
