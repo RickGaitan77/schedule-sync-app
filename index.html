@@ -79,8 +79,6 @@
     </div>
 
     <script>
-        // Make sure this matches your exact Render URL scheme
-        const API_BASE_URL = 'https://schedule-sync-app.onrender.com';
         let parsedShiftsGlobal = [];
 
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -130,7 +128,7 @@
 
                 if (file1) {
                     const b64_1 = await fileToBase64(file1);
-                    const res1 = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
+                    const res1 = await fetch('/api/parse-schedule', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ imageBase64: b64_1 })
@@ -150,7 +148,7 @@
 
                 if (file2) {
                     const b64_2 = await fileToBase64(file2);
-                    const res2 = await fetch(`${API_BASE_URL}/api/parse-schedule`, {
+                    const res2 = await fetch('/api/parse-schedule', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ imageBase64: b64_2 })
@@ -197,7 +195,6 @@
 
             } catch (err) {
                 console.error(err);
-                // Display the exact technical error on screen so we can see it!
                 statusEl.innerText = "Error: " + err.message;
                 statusEl.className = "text-xs text-center text-rose-400 h-auto py-1";
             }
@@ -209,7 +206,7 @@
                 statusEl.innerText = "Generating Apple Calendar export file...";
                 statusEl.className = "text-xs text-center text-blue-400 h-auto py-1";
 
-                const response = await fetch(`${API_BASE_URL}/api/export-calendar`, {
+                const response = await fetch('/api/export-calendar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ shifts: parsedShiftsGlobal })
