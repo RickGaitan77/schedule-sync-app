@@ -1,11 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const ical = require('ical-generator').default;
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const STORAGE_FILE = path.join(__dirname, 'saved-schedule.json');
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -29,7 +31,21 @@ function parseTimeStringToHours(timeStr) {
     return { hours, minutes };
 }
 
-// Route to robustly extract multiple shifts from anywhere in the transcript
+// Get saved shifts from server storage
+app.get('/api/get-schedule', (req, res) => {
+    try {
+        if (fs.existsSync(STORAGE_FILE)) {
+            const data = fs.readFileSync(STORAGE_FILE, 'utf8');
+            res.json({ success: true, shifts: JSON.parse(data) });
+        } else {
+            res.json({ success: true, shifts: [] });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Route to parse voice text and save to server storage
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -38,35 +54,33 @@ app.post('/api/parse-voice', (req, res) => {
         }
 
         const targetYear = year !== undefined ? parseInt(year, 10) : 2026;
-        const targetMonth = month !== undefined ? parseInt(month, 10) : 7; // Default August
+        const targetMonth = month !== undefined ? parseInt(month, 10) : 7;
 
-        const shifts = [];
-        
-        // Split text by common conjunctions or punctuation to isolate individual shift statements
+        let existingShifts = [];
+        if (fs.existsSync(STORAGE_FILE)) {
+            try { existingShifts = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); } catch(e) {}
+        }
+
         const segments = text.split(/(?:\.|\,|\band\b|\bthen\b|\balso\b|\bon\b)/i);
 
         segments.forEach(segment => {
             const lower = segment.toLowerCase().trim();
             if (!lower) return;
 
-            // Must contain a time indicator ("to" or "-") to qualify as a shift
             if (!lower.includes('to') && !lower.includes('-')) return;
 
-            // Look for a day number in this specific segment
             const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
             if (!dayMatch) return;
 
             const dayNum = parseInt(dayMatch[1], 10);
             if (dayNum < 1 || dayNum > 31) return;
 
-            // Default shift settings
             let shiftType = "General Shift";
             let colorCode = "light-blue";
             let startTimeText = "7:00 AM";
             let endTimeText = "6:00 PM";
             let details = "7:00 AM to 6:00 PM";
 
-            // Check for Urgent Care
             if (lower.includes('urgent') || lower.includes('urgent care') || lower.includes('12 to 10') || lower.includes('12p')) {
                 shiftType = "Urgent Care";
                 colorCode = "dark-blue";
@@ -75,7 +89,6 @@ app.post('/api/parse-voice', (req, res) => {
                 details = "12:00 PM to 10:00 PM";
             } 
             
-            // Extract custom hours spoken (e.g., "7:30 to 6:00", "7:00 to 5:30")
             const timeExtractMatch = lower.match(/([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)/i);
             if (timeExtractMatch && !lower.includes('urgent')) {
                 startTimeText = timeExtractMatch[1].toUpperCase().replace(/\./g, '');
@@ -91,7 +104,6 @@ app.post('/api/parse-voice', (req, res) => {
                 details = `${startTimeText} to ${endTimeText}`;
             }
 
-            // Capture room details (e.g., "room two", "room four")
             let roomInfo = "";
             const roomMatch = lower.match(/room\s+([a-z0-9]+)/i);
             if (roomMatch) {
@@ -101,26 +113,32 @@ app.post('/api/parse-voice', (req, res) => {
 
             const shiftDate = new Date(Date.UTC(targetYear, targetMonth, dayNum));
 
-            // Prevent duplicate entries for the exact same day
-            const existingIndex = shifts.findIndex(s => new Date(s.date).getUTCDate() === dayNum);
-            if (existingIndex === -1) {
-                shifts.push({
-                    shiftType,
-                    colorCode,
-                    details,
-                    date: shiftDate.toISOString(),
-                    startTimeText,
-                    endTimeText
-                });
+            // Replace or add shift for this specific date
+            const existingIndex = existingShifts.findIndex(s => new Date(s.date).getUTCDate() === dayNum && new Date(s.date).getUTCMonth() === targetMonth);
+            const newShift = {
+                shiftType,
+                colorCode,
+                details,
+                date: shiftDate.toISOString(),
+                startTimeText,
+                endTimeText
+            };
+
+            if (existingIndex >= 0) {
+                existingShifts[existingIndex] = newShift;
+            } else {
+                existingShifts.push(newShift);
             }
         });
 
-        // Sort chronologically
-        shifts.sort((a, b) => new Date(a.date) - new Date(b.date));
+        existingShifts.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Save to file storage
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(existingShifts, null, 2));
 
         res.json({
             success: true,
-            shifts
+            shifts: existingShifts
         });
 
     } catch (error) {
@@ -129,13 +147,28 @@ app.post('/api/parse-voice', (req, res) => {
     }
 });
 
+// Update or delete shifts
+app.post('/api/update-schedule', (req, res) => {
+    try {
+        const { shifts } = req.body;
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(shifts || [], null, 2));
+        res.json({ success: true, shifts });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Route to generate and download the .ics Apple Calendar file
 app.post('/api/export-calendar', (req, res) => {
     try {
-        const { shifts } = req.body;
+        let shifts = [];
+        if (fs.existsSync(STORAGE_FILE)) {
+            shifts = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8'));
+        }
+
         const calendar = ical({ name: 'Work Schedule' });
 
-        if (shifts && Array.isArray(shifts)) {
+        if (Array.isArray(shifts)) {
             shifts.forEach((shift) => {
                 const startDate = new Date(shift.date);
                 const endDate = new Date(shift.date);

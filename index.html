@@ -103,7 +103,6 @@
             justify-content: space-between;
             align-items: center;
         }
-        /* Frosted High-Visibility Urgent Care Styling */
         .shift-card.dark-blue {
             background: linear-gradient(135deg, rgba(88, 86, 214, 0.12), rgba(175, 82, 222, 0.2));
             border-left: 6px solid #af52de;
@@ -148,7 +147,7 @@
         }
     </style>
 </head>
-<body>
+<body onload="loadSavedSchedule()">
 
     <div class="container">
         <h1>Monthly Schedule Voice Input</h1>
@@ -175,7 +174,7 @@
         </div>
 
         <div class="voice-section">
-            <p class="status-text">Select your target month above, tap the microphone, and read your shifts (e.g., "On the 2nd, 8 to 6:30. On the 3rd, urgent care 12 to 10.")</p>
+            <p class="status-text">Select your target month above, tap the microphone, and read your shifts (e.g., "On the 28th, 7:30 to 6:00, room two.")</p>
             <button id="micButton" onclick="toggleListening()">
                 🎙️ Start Listening
             </button>
@@ -215,17 +214,23 @@
                 }
             };
 
-            recognition.onerror = (event) => {
-                stopListening();
-            };
-
+            recognition.onerror = () => { stopListening(); };
             recognition.onend = () => {
-                if (isRecording) {
-                    try { recognition.start(); } catch(e) {}
-                }
+                if (isRecording) { try { recognition.start(); } catch(e) {} }
             };
-        } else {
-            alert('Speech Recognition is not supported in this browser. Try Chrome or Safari.');
+        }
+
+        async function loadSavedSchedule() {
+            try {
+                const response = await fetch('/api/get-schedule');
+                const data = await response.json();
+                if (data.success && data.shifts.length > 0) {
+                    parsedShifts = data.shifts;
+                    renderShifts();
+                }
+            } catch (e) {
+                console.error("Could not load saved schedule", e);
+            }
         }
 
         function toggleListening() {
@@ -240,9 +245,7 @@
                     isRecording = true;
                     micButton.textContent = "🛑 Stop Listening";
                     micButton.classList.add('recording');
-                } catch (e) {
-                    console.error(e);
-                }
+                } catch (e) { console.error(e); }
             }
         }
 
@@ -290,7 +293,7 @@
             count.textContent = parsedShifts.length;
 
             if (parsedShifts.length === 0) {
-                list.innerHTML = '<p style="color: #666;">No shifts detected with valid times. Try phrasing like "On the 2nd, 8 to 6:30".</p>';
+                list.innerHTML = '<p style="color: #666;">No shifts saved yet.</p>';
                 return;
             }
 
@@ -317,24 +320,28 @@
             });
         }
 
-        function editShift(index) {
+        async function editShift(index) {
             const shift = parsedShifts[index];
-            const newDetails = prompt("Edit shift hours (e.g., 8:00 AM to 6:30 PM):", shift.details);
+            const newDetails = prompt("Edit shift hours (e.g., 7:30 AM to 6:00 PM, Room 2):", shift.details);
             if (newDetails !== null) {
                 shift.details = newDetails;
-                // Quick parse start/end split if formatted with "to"
-                if (newDetails.toLowerCase().includes('to')) {
-                    const parts = newDetails.split(/to/i);
-                    shift.startTimeText = parts[0].trim();
-                    shift.endTimeText = parts[1].trim();
-                }
+                await updateServerShifts();
                 renderShifts();
             }
         }
 
-        function removeShift(index) {
+        async function removeShift(index) {
             parsedShifts.splice(index, 1);
+            await updateServerShifts();
             renderShifts();
+        }
+
+        async function updateServerShifts() {
+            await fetch('/api/update-schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shifts: parsedShifts })
+            });
         }
 
         async function exportCalendar() {
