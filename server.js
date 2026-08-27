@@ -45,7 +45,7 @@ app.get('/api/get-schedule', (req, res) => {
     }
 });
 
-// Route to parse continuous voice text and extract all shifts anywhere in the stream
+// Route using the robust, original matching loop that successfully caught all dates
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -61,19 +61,18 @@ app.post('/api/parse-voice', (req, res) => {
             try { existingShifts = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); } catch(e) {}
         }
 
-        // Clean text and split on loose boundaries like "and", "then", or commas to group phrases
-        const textLower = text.toLowerCase();
-        const chunks = textLower.split(/(?:\band\b|\bthen\b|\bfa\b|,|\.)/i);
+        // Split transcript into clauses based on periods, commas, or conjunctions
+        const segments = text.split(/(?:\.|\,|\b(?:and|also|then|next)\b)/i);
 
-        chunks.forEach(chunk => {
-            const lower = chunk.trim();
+        segments.forEach(segment => {
+            const lower = segment.toLowerCase().trim();
             if (!lower) return;
 
-            // Must contain a time range indicator to be a shift
+            // Must contain a time range indicator ("to" or "-")
             if (!lower.includes('to') && !lower.includes('-')) return;
 
-            // Find any day number (1-31) in this phrase chunk
-            const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
+            // Extract day number
+            const dayMatch = lower.match(/(?:august\s+|september\s+|on\s+the\s+|date\s+)?([1-3]?[0-9])(?:st|nd|rd|th)?/);
             if (!dayMatch) return;
 
             const dayNum = parseInt(dayMatch[1], 10);
@@ -93,7 +92,6 @@ app.post('/api/parse-voice', (req, res) => {
                 details = "12:00 PM to 10:00 PM";
             } 
             
-            // Extract custom hours spoken (e.g., "7:30 to 6:00", "7 to 5:30")
             const timeExtractMatch = lower.match(/([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}(?::[0-9]{2})?\s*(?:a\.m\.|p\.m\.|am|pm)?)/i);
             if (timeExtractMatch && !lower.includes('urgent')) {
                 startTimeText = timeExtractMatch[1].toUpperCase().replace(/\./g, '');
@@ -109,7 +107,6 @@ app.post('/api/parse-voice', (req, res) => {
                 details = `${startTimeText} to ${endTimeText}`;
             }
 
-            // Capture room details (e.g., "room two", "room 4")
             let roomInfo = "";
             const roomMatch = lower.match(/room\s+([a-z0-9]+)/i);
             if (roomMatch) {
@@ -119,7 +116,6 @@ app.post('/api/parse-voice', (req, res) => {
 
             const shiftDate = new Date(Date.UTC(targetYear, targetMonth, dayNum));
 
-            // Replace or add shift for this specific date
             const existingIndex = existingShifts.findIndex(s => new Date(s.date).getUTCDate() === dayNum && new Date(s.date).getUTCMonth() === targetMonth);
             const newShift = {
                 shiftType,
