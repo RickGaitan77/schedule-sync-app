@@ -45,7 +45,7 @@ app.get('/api/get-schedule', (req, res) => {
     }
 });
 
-// Route using the robust, original matching loop that successfully caught all dates
+// Route using global sentence parsing to catch every single date mentioned
 app.post('/api/parse-voice', (req, res) => {
     try {
         const { text, year, month } = req.body;
@@ -61,18 +61,18 @@ app.post('/api/parse-voice', (req, res) => {
             try { existingShifts = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); } catch(e) {}
         }
 
-        // Split transcript into clauses based on periods, commas, or conjunctions
-        const segments = text.split(/(?:\.|\,|\b(?:and|also|then|next)\b)/i);
+        // Split text by common sentence boundaries or line breaks to isolate each shift statement
+        const sentences = text.split(/(?:\.|\n|;)/);
 
-        segments.forEach(segment => {
-            const lower = segment.toLowerCase().trim();
+        sentences.forEach(sentence => {
+            const lower = sentence.toLowerCase().trim();
             if (!lower) return;
 
             // Must contain a time range indicator ("to" or "-")
             if (!lower.includes('to') && !lower.includes('-')) return;
 
-            // Extract day number
-            const dayMatch = lower.match(/(?:august\s+|september\s+|on\s+the\s+|date\s+)?([1-3]?[0-9])(?:st|nd|rd|th)?/);
+            // Extract day number from this specific sentence
+            const dayMatch = lower.match(/\b([1-3]?[0-9])(?:st|nd|rd|th)?\b/);
             if (!dayMatch) return;
 
             const dayNum = parseInt(dayMatch[1], 10);
