@@ -158,8 +158,8 @@ app.post('/api/update-schedule', (req, res) => {
     }
 });
 
-// Route to generate and download the .ics Apple Calendar file anchored to Central Time
-app.post('/api/export-calendar', (req, res) => {
+// Route to generate and download the .ics Apple Calendar file anchored to Central Time (GET method for direct browser download)
+app.get('/api/export-calendar', (req, res) => {
     try {
         let shifts = [];
         if (fs.existsSync(STORAGE_FILE)) {
