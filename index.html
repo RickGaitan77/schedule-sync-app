@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Tells mobile OS to run in full-screen standalone app mode -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Schedule Sync & Quick View</title>
+    <!-- Link to PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
     <!-- Google Fonts & Tailwind for modern styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -12,6 +18,8 @@
             color: #f8fafc;
             min-height: 100vh;
             font-family: system-ui, -apple-system, sans-serif;
+            /* Prevent bounce scrolling and ensure full height */
+            overscroll-behavior-y: none;
         }
         .glass-card {
             background: rgba(30, 41, 59, 0.7);
@@ -130,7 +138,7 @@
 
                 if (file1) {
                     const b64_1 = await fileToBase64(file1);
-                    const res1 = await fetch('http://localhost:3000/api/parse-schedule', {
+                    const res1 = await fetch('/api/parse-schedule', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ imageBase64: b64_1 })
@@ -148,7 +156,7 @@
 
                 if (file2) {
                     const b64_2 = await fileToBase64(file2);
-                    const res2 = await fetch('http://localhost:3000/api/parse-schedule', {
+                    const res2 = await fetch('/api/parse-schedule', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ imageBase64: b64_2 })
@@ -204,7 +212,7 @@
                 statusEl.innerText = "Generating Apple Calendar export file...";
                 statusEl.className = "text-xs text-center text-blue-400 h-4";
 
-                const response = await fetch('http://localhost:3000/api/export-calendar', {
+                const response = await fetch('/api/export-calendar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ shifts: parsedShiftsGlobal })
