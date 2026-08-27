@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const Tesseract = require('tesseract.js');
 const ical = require('ical-generator').default;
 require('dotenv').config();
 
@@ -17,7 +18,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Schedule Parsing Route using direct Google Vision REST API (uses GOOGLE_API_KEY securely)
+// Schedule Parsing Route using local Tesseract OCR (Free, Self-Contained)
 app.post('/api/parse-schedule', async (req, res) => {
     try {
         const { imageBase64 } = req.body;
@@ -25,38 +26,17 @@ app.post('/api/parse-schedule', async (req, res) => {
             return res.status(400).json({ success: false, error: 'No image provided' });
         }
 
-        const apiKey = process.env.GOOGLE_API_KEY;
-        if (!apiKey) {
-            return res.status(500).json({ success: false, error: 'GOOGLE_API_KEY is not configured on the server.' });
-        }
-
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+        const imageBuffer = Buffer.from(base64Data, 'base64');
 
-        // Call Google Vision REST API directly
-        const visionUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
-        const visionBody = {
-            requests: [
-                {
-                    image: { content: base64Data },
-                    features: [{ type: 'TEXT_DETECTION' }]
-                }
-            ]
-        };
+        // Run Tesseract locally
+        const { data: { text } } = await Tesseract.recognize(
+            imageBuffer,
+            'eng',
+            { logger: () => {} }
+        );
 
-        const visionResponse = await fetch(visionUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(visionBody)
-        });
-
-        const visionData = await visionResponse.json();
-        
-        if (visionData.error) {
-            throw new Error(visionData.error.message || 'Google Vision API error');
-        }
-
-        const annotations = visionData.responses?.[0]?.textAnnotations;
-        const fullText = annotations && annotations.length > 0 ? annotations[0].description : '';
+        const fullText = text || '';
 
         // Classification logic
         let shiftType = "General Shift";
