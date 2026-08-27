@@ -11,11 +11,15 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Serve static frontend files (like index.html)
+// Serve static frontend files (like index.html and manifest.json)
 app.use(express.static(path.join(__dirname)));
 
+// Explicitly serve index.html on root visit so it never fails
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Initialize Google Cloud Vision Client
-// On Render, it reads from the GOOGLE_API_KEY environment variable automatically
 const client = new vision.ImageAnnotatorClient();
 
 // Schedule Parsing Route (OCR + Classification)
@@ -26,16 +30,13 @@ app.post('/api/parse-schedule', async (req, res) => {
             return res.status(400).json({ success: false, error: 'No image provided' });
         }
 
-        // Remove the data URL prefix if present (e.g., "data:image/jpeg;base64,...")
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
         const imageBuffer = Buffer.from(base64Data, 'base64');
 
-        // Call Google Cloud Vision API for Text Detection
         const [result] = await client.textDetection({ image: { content: imageBuffer } });
         const detections = result.textAnnotations;
         const fullText = detections && detections.length > 0 ? detections[0].description : '';
 
-        // Simple classification logic based on detected text keywords
         let shiftType = "General Shift";
         let colorCode = "light-blue";
 
@@ -76,7 +77,7 @@ app.post('/api/export-calendar', (req, res) => {
             shifts.forEach((shift, index) => {
                 calendar.createEvent({
                     start: new Date(shift.date || Date.now()),
-                    end: new Date(new Date(shift.date || Date.now()).getTime() + 8 * 3600000), // Default 8 hour block
+                    end: new Date(new Date(shift.date || Date.now()).getTime() + 8 * 3600000),
                     summary: `Work: ${shift.shiftType}`,
                     description: shift.details || 'Parsed via Schedule Sync OCR',
                 });
