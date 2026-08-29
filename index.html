@@ -63,6 +63,13 @@
             margin-top: 2px;
         }
 
+        .current-date-badge {
+            font-size: 0.85rem;
+            color: var(--accent);
+            font-weight: 500;
+            margin-top: 4px;
+        }
+
         .glass-card {
             background: var(--glass-bg);
             backdrop-filter: blur(16px);
@@ -221,6 +228,21 @@
             word-break: break-word;
         }
 
+        .delete-shift-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0 4px;
+            flex: unset;
+            transition: color 0.2s;
+        }
+
+        .delete-shift-btn:hover {
+            color: var(--urgent);
+        }
+
         .actions-footer {
             display: flex;
             gap: 10px;
@@ -256,7 +278,7 @@
     <div class="container">
         <header>
             <h1>Vet Schedule Assistant</h1>
-            <p>Voice-to-Schedule Engine</p>
+            <div class="current-date-badge" id="currentDateBadge">Loading date...</div>
         </header>
 
         <!-- 1. Scheduled Shifts Module -->
@@ -305,6 +327,11 @@
         const scheduleGrid = document.getElementById('scheduleGrid');
         const micStatus = document.getElementById('micStatus');
         const statusMsg = document.getElementById('statusMsg');
+        const currentDateBadge = document.getElementById('currentDateBadge');
+
+        // Display current date at top
+        const todayFormatted = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+        currentDateBadge.textContent = todayFormatted;
 
         let currentShifts = [];
 
@@ -405,21 +432,34 @@
             }
         }
 
+        async function deleteSingleShift(index) {
+            currentShifts.splice(index, 1);
+            renderScheduleView();
+            await saveToServer(currentShifts);
+        }
+
         function renderScheduleView() {
             scheduleGrid.innerHTML = '';
 
-            if (currentShifts && currentShifts.length > 0) {
+            // Filter out past dates automatically (comparing normalized YYYY-MM-DD strings)
+            const todayStr = new Date().toISOString().split('T')[0];
+            const upcomingShifts = currentShifts.filter(shift => {
+                const shiftDateStr = new Date(shift.date).toISOString().split('T')[0];
+                return shiftDateStr >= todayStr;
+            });
+
+            if (upcomingShifts && upcomingShifts.length > 0) {
                 localStorage.setItem('vet_shifts_backup', JSON.stringify(currentShifts));
             } else {
                 localStorage.removeItem('vet_shifts_backup');
             }
 
-            if (!currentShifts || currentShifts.length === 0) {
-                scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 15px; font-size: 0.85rem;">No shifts scheduled yet.</div>';
+            if (!upcomingShifts || upcomingShifts.length === 0) {
+                scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 15px; font-size: 0.85rem;">No upcoming shifts scheduled.</div>';
                 return;
             }
 
-            currentShifts.forEach((shift) => {
+            upcomingShifts.forEach((shift, index) => {
                 const d = new Date(shift.date);
                 const row = document.createElement('div');
                 const isUrgent = shift.shiftType === 'Urgent Care';
@@ -447,6 +487,7 @@
                         <div class="shift-type">${shift.shiftType}</div>
                         <div class="shift-time">${cleanDetails}</div>
                     </div>
+                    <button class="delete-shift-btn" title="Delete shift" onclick="deleteSingleShift(${index})">&times;</button>
                 `;
                 scheduleGrid.appendChild(row);
             });
