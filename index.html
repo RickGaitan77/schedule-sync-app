@@ -377,11 +377,9 @@
                     currentShifts = data.shifts;
                     localStorage.setItem('vet_shifts_backup', JSON.stringify(currentShifts));
                 } else {
-                    // Fallback to browser memory if server was reset
                     const localBackup = localStorage.getItem('vet_shifts_backup');
                     if (localBackup) {
                         currentShifts = JSON.parse(localBackup);
-                        // Re-sync local backup back to server automatically
                         await saveToServer(currentShifts);
                     } else {
                         currentShifts = [];
@@ -410,7 +408,6 @@
         function renderScheduleView() {
             scheduleGrid.innerHTML = '';
 
-            // Automatically maintain local storage backup on render view update
             if (currentShifts && currentShifts.length > 0) {
                 localStorage.setItem('vet_shifts_backup', JSON.stringify(currentShifts));
             } else {
@@ -429,10 +426,8 @@
                 row.className = `shift-row ${isUrgent ? 'urgent-care' : 'has-shift'}`;
 
                 const dayNameStr = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
-                // Omitting the redundant year saves horizontal space on mobile:
                 const monthDayStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-                // Format room words to numbers (e.g. "Room Five" -> "Rm 5")
                 let cleanDetails = shift.details || '';
                 const wordToNum = {
                     'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
@@ -455,6 +450,7 @@
                 `;
                 scheduleGrid.appendChild(row);
             });
+        }
 
         processBtn.addEventListener('click', async () => {
             const text = transcriptBox.value.trim();
