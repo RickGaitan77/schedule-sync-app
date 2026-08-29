@@ -374,17 +374,49 @@
             try {
                 const res = await fetch('/api/get-schedule');
                 const data = await res.json();
-                if (data.success) {
-                    currentShifts = data.shifts || [];
-                    renderScheduleView();
+                if (data.success && data.shifts && data.shifts.length > 0) {
+                    currentShifts = data.shifts;
+                    localStorage.setItem('vet_shifts_backup', JSON.stringify(currentShifts));
+                } else {
+                    // Fallback to browser memory if server was reset
+                    const localBackup = localStorage.getItem('vet_shifts_backup');
+                    if (localBackup) {
+                        currentShifts = JSON.parse(localBackup);
+                        // Re-sync local backup back to server automatically
+                        await saveToServer(currentShifts);
+                    } else {
+                        currentShifts = [];
+                    }
                 }
+                renderScheduleView();
             } catch (err) {
-                console.error('Failed to load schedule', err);
+                const localBackup = localStorage.getItem('vet_shifts_backup');
+                currentShifts = localBackup ? JSON.parse(localBackup) : [];
+                renderScheduleView();
+            }
+        }
+
+        async function saveToServer(shifts) {
+            try {
+                await fetch('/api/update-schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shifts })
+                });
+            } catch (err) {
+                console.error('Server sync failed', err);
             }
         }
 
         function renderScheduleView() {
             scheduleGrid.innerHTML = '';
+
+            // Automatically maintain local storage backup on render view update
+            if (currentShifts && currentShifts.length > 0) {
+                localStorage.setItem('vet_shifts_backup', JSON.stringify(currentShifts));
+            } else {
+                localStorage.removeItem('vet_shifts_backup');
+            }
 
             if (!currentShifts || currentShifts.length === 0) {
                 scheduleGrid.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 15px; font-size: 0.85rem;">No shifts scheduled yet.</div>';
