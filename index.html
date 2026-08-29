@@ -217,9 +217,8 @@
         .shift-time {
             font-size: 0.75rem;
             color: var(--text-muted);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            word-break: break-word;
         }
 
         .actions-footer {
@@ -430,7 +429,19 @@
                 row.className = `shift-row ${isUrgent ? 'urgent-care' : 'has-shift'}`;
 
                 const dayNameStr = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
-                const monthDayStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+                // Omitting the redundant year saves horizontal space on mobile:
+                const monthDayStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+                // Format room words to numbers (e.g. "Room Five" -> "Rm 5")
+                let cleanDetails = shift.details || '';
+                const wordToNum = {
+                    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+                    'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10'
+                };
+                cleanDetails = cleanDetails.replace(/\b(?:room|rm)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/gi, (match, p1) => {
+                    const num = wordToNum[p1.toLowerCase()] || p1;
+                    return `Rm ${num}`;
+                });
 
                 row.innerHTML = `
                     <div class="day-info">
@@ -439,12 +450,11 @@
                     </div>
                     <div class="shift-details">
                         <div class="shift-type">${shift.shiftType}</div>
-                        <div class="shift-time">${shift.details}</div>
+                        <div class="shift-time">${cleanDetails}</div>
                     </div>
                 `;
                 scheduleGrid.appendChild(row);
             });
-        }
 
         processBtn.addEventListener('click', async () => {
             const text = transcriptBox.value.trim();
