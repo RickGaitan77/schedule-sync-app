@@ -58,12 +58,17 @@
     .wave-delay-2 { animation-delay: 0.4s; }
     .wave-delay-3 { animation-delay: 0.1s; }
     .wave-delay-4 { animation-delay: 0.3s; }
+
+    /* iPhone Safe Area Notch Spacing */
+    .notch-safe-header {
+      padding-top: max(1.25rem, env(safe-area-inset-top, 24px)) !important;
+    }
   </style>
 </head>
-<body class="min-h-screen bg-[#020617] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#020617] to-black text-slate-200 font-sans selection:bg-emerald-500/30 overflow-hidden">
+<body class="min-h-screen bg-[#020617] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#020617] to-black text-slate-200 font-sans selection:bg-emerald-500/30 overflow-x-hidden overflow-y-auto lg:overflow-hidden">
   
-  <div id="app" class="max-w-6xl mx-auto flex flex-col h-screen max-h-screen">
-    <header class="flex items-center justify-between p-4 sm:p-6 shrink-0 border-b border-slate-800/50">
+  <div id="app" class="max-w-6xl mx-auto flex flex-col min-h-screen lg:h-screen lg:max-h-screen">
+    <header class="flex items-center justify-between p-4 sm:p-6 shrink-0 border-b border-slate-800/50 notch-safe-header">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
           <i data-lucide="calendar-sync" class="w-5 h-5 text-white"></i>
@@ -79,7 +84,7 @@
       </div>
     </header>
 
-    <main class="flex-1 overflow-hidden p-2 sm:p-4 lg:p-6" id="main-content">
+    <main class="flex-1 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-6" id="main-content">
       <!-- Content renders here -->
     </main>
   </div>
@@ -147,6 +152,21 @@
       } catch (e) {
         console.error('Failed to parse synced shifts:', e);
       }
+    }
+
+    // Bulletproof Safari Local Date Parser (No Timezone Shifting)
+    function parseLocalDate(isoStr) {
+      if (!isoStr) return new Date(NaN);
+      const clean = isoStr.replace('Z', '');
+      const parts = clean.split('T');
+      const [y, m, d] = parts[0].split('-').map(Number);
+      let h = 0, min = 0;
+      if (parts[1]) {
+        const [hh, mm] = parts[1].split(':').map(Number);
+        h = hh || 0;
+        min = mm || 0;
+      }
+      return new Date(y, m - 1, d, h, min);
     }
 
     function formatTime(rawStr) {
@@ -244,16 +264,16 @@
       windowEnd.setHours(23, 59, 59, 999);
       
       const dashboardShifts = state.shifts.filter(s => {
-        const d = new Date(s.start.replace('Z', ''));
+        const d = parseLocalDate(s.start);
         return d >= windowStart && d <= windowEnd;
-      }).sort((a,b) => new Date(a.start.replace('Z', '')).getTime() - new Date(b.start.replace('Z', '')).getTime());
+      }).sort((a,b) => parseLocalDate(a.start).getTime() - parseLocalDate(b.start).getTime());
 
       let shiftsHtml = '';
       if (dashboardShifts.length === 0) {
         shiftsHtml = `
-          <div class="h-full flex flex-col items-center justify-center text-slate-500 pb-10 mt-10">
-            <i data-lucide="check-circle-2" class="w-12 h-12 mb-3 opacity-20"></i>
-            <p class="font-mono text-sm uppercase tracking-widest text-slate-600 text-center">No shifts scheduled for the next 7 days</p>
+          <div class="h-full min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-8">
+            <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts scheduled for the next 7 days</p>
           </div>
         `;
       } else {
@@ -267,15 +287,16 @@
 
       const currentMonthName = new Date(0, parseInt(state.month) - 1).toLocaleString('default', { month: 'long' });
       const monthWorkingShifts = state.shifts.filter(s => {
-        const d = new Date(s.start.replace('Z', ''));
+        const d = parseLocalDate(s.start);
         return (d.getMonth() + 1).toString() === state.month && d.getFullYear().toString() === state.year;
       });
       const exportDisabled = monthWorkingShifts.length === 0 ? 'disabled' : '';
 
       container.innerHTML = `
-        <div class="h-full grid grid-cols-1 lg:grid-cols-12 grid-rows-none lg:grid-rows-6 gap-4 sm:gap-6 pb-20">
+        <div class="min-h-full lg:h-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-6 gap-4 sm:gap-6 pb-24 lg:pb-0">
           
-          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden order-1">
+          <!-- 1. Next 7 Days Matrix (Locked height & visibility on mobile) -->
+          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[300px] lg:min-h-0 order-1">
             <div class="p-4 border-b border-slate-800/50 flex justify-between items-center shrink-0">
               <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">Shift Matrix (Next 7 Days)</h2>
               <div class="flex gap-2">
@@ -284,16 +305,17 @@
                 </span>
               </div>
             </div>
-            <div class="flex-1 p-2 sm:p-4 space-y-1.5 sm:space-y-4 overflow-y-auto scroll-hide">
+            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[380px] lg:max-h-none scroll-hide">
               ${shiftsHtml}
             </div>
           </div>
 
+          <!-- 2. Input Interface -->
           <div class="col-span-1 lg:col-span-4 lg:row-span-4 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex flex-col shadow-2xl relative order-2 shrink-0">
             <div class="absolute top-4 right-4">
               <div class="w-2 h-2 rounded-full ${state.isListening ? 'bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse' : 'bg-violet-500 shadow-[0_0_10px_#a855f7]'}"></div>
             </div>
-            <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400 mb-6 shrink-0">Input Interface</h2>
+            <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400 mb-4 shrink-0">Input Interface</h2>
             <div class="flex-1 flex flex-col gap-4 min-h-[220px]">
               <div class="relative group flex-1 flex flex-col">
                 <textarea
@@ -333,8 +355,9 @@
             </div>
           </div>
 
+          <!-- 3. Export Protocol -->
           <div class="col-span-1 lg:col-span-4 lg:row-span-2 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl order-3 shrink-0">
-            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-4 lg:mb-0">Export Protocol</h2>
+            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-4">Export Protocol</h2>
             <div class="grid grid-cols-2 gap-4 mt-auto">
               <button 
                 onclick="exportCalendar()"
@@ -379,15 +402,15 @@
       const daysInMonth = new Date(y, m + 1, 0).getDate();
       
       const monthWorkingShifts = state.shifts.filter(s => {
-        const d = new Date(s.start.replace('Z', ''));
+        const d = parseLocalDate(s.start);
         return d.getMonth() === m && d.getFullYear() === y;
-      }).sort((a,b) => new Date(a.start.replace('Z', '')).getTime() - new Date(b.start.replace('Z', '')).getTime());
+      }).sort((a,b) => parseLocalDate(a.start).getTime() - parseLocalDate(b.start).getTime());
 
       const daysOff = [];
       for(let i=1; i<=daysInMonth; i++) {
         const currentDate = new Date(y, m, i);
         const hasShift = monthWorkingShifts.some(s => {
-          const d = new Date(s.start.replace('Z', ''));
+          const d = parseLocalDate(s.start);
           return d.getDate() === i;
         });
         if(!hasShift) {
@@ -467,7 +490,7 @@
       `;
     }
 
-        function renderModals() {
+    function renderModals() {
       const modalContainer = document.getElementById('modal-container');
       let html = '';
 
@@ -574,7 +597,7 @@
       const toastContainer = document.getElementById('toast-container');
       if (state.toastMsg) {
         toastContainer.innerHTML = `
-          <div class="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/50 text-emerald-400 px-6 py-3 rounded-full flex items-center gap-3 shadow-lg shadow-emerald-500/20 transition-opacity">
+          <div class="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/50 text-emerald-400 px-6 py-3 rounded-full flex items-center gap-3 shadow-lg shadow-emerald-500/20 transition-opacity">
             <i data-lucide="check-circle-2" class="w-5 h-5"></i>
             <span class="font-medium text-sm">${state.toastMsg}</span>
           </div>
@@ -682,11 +705,8 @@
         text = text.replace(/\bfour\b/g, '4');
         text = text.replace(/\bfive\b/g, '5');
 
-        // Robust date boundary anchor regex
-        // Matches: month+day | mm/dd | dayname+day | standalone ordinals
         const dateRegex = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+the)?\s+\d{1,2}(?:st|nd|rd|th)?|(?:on\s+)?(?:the\s+)?\d{1,2}(?:st|nd|rd|th))\b/gi;
 
-        // Use matchAll to avoid skipped regex lastIndex bugs
         let matches = [...text.matchAll(dateRegex)];
         let chunks = [];
         
@@ -705,7 +725,7 @@
         }
 
         const currentYear = parseInt(state.year) || new Date().getFullYear();
-        let currentMonth = parseInt(state.month) - 1; // Carry forward the UI active month by default
+        let currentMonth = parseInt(state.month) - 1;
         let newShiftsCount = 0;
 
         chunks.forEach(chunk => {
@@ -714,13 +734,12 @@
 
           let day = null;
           
-          // 1. Month Extractor
           const monthMatch = chunk.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
           if (monthMatch) {
             const mStr = monthMatch[1].toLowerCase();
             const monthMap = { jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3, may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7, sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11 };
             if (monthMap[mStr] !== undefined) {
-              currentMonth = monthMap[mStr]; // Keep carrying forward
+              currentMonth = monthMap[mStr];
             }
           } else {
              const numMatch = chunk.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
@@ -729,7 +748,6 @@
              }
           }
 
-          // 2. Day Extractor
           const numMatch = chunk.match(/\b\d{1,2}[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?\b/);
           const ordinalMatch = chunk.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
           const plainDayMatch = chunk.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\b/i);
@@ -742,17 +760,10 @@
             day = parseInt(plainDayMatch[1]);
           }
 
-          // 3. Time Extractor (Non-greedy inherent due to anchor blocks)
           const timeMatch = chunk.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/i);
 
-          if (day === null && !timeMatch) {
-            console.warn("DEBUG: Skipping chunk (no date/time found):", chunk);
-            return;
-          }
-          if (!timeMatch) {
-            console.warn("DEBUG: Skipping chunk (no valid time string found):", chunk);
-            return; 
-          }
+          if (day === null && !timeMatch) return;
+          if (!timeMatch) return;
           
           if (day === null) day = new Date().getDate();
 
@@ -764,7 +775,6 @@
           let endM = timeMatch[5] ? parseInt(timeMatch[5]) : 0;
           let endPeriod = timeMatch[6] ? timeMatch[6].toLowerCase() : null;
 
-          // Inference constraints
           if (!startPeriod) {
             if (startH >= 6 && startH <= 11) startPeriod = 'am';
             else if (startH === 12 || startH < 6) startPeriod = 'pm';
@@ -780,7 +790,6 @@
           if (endPeriod && endPeriod.startsWith('p') && endH < 12) endH += 12;
           if (endPeriod && endPeriod.startsWith('a') && endH === 12) endH = 0;
 
-          // 4. Room and Flag Extractor
           let details = '';
           const roomMatch = chunk.match(/\broom\s+([a-z0-9]+)\b/i);
           const isoMatch = chunk.match(/\biso\b/i);
