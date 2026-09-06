@@ -9,7 +9,7 @@
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 
   <style>
     @keyframes pulse-shadow-red {
@@ -115,20 +115,31 @@
     if (hash.startsWith('#sync=')) {
       try {
         const encodedData = hash.substring(6);
-        const decodedStr = atob(decodeURIComponent(encodedData));
-        const decodedData = JSON.parse(decodedStr);
+        const decodedData = decodeURIComponent(encodedData);
+        const shiftStrings = decodedData.split('|');
         
-        const restoredShifts = decodedData.map(s => ({
-          id: Date.now().toString() + Math.random().toString(),
-          start: s.d + 'T' + s.s,
-          end: s.d + 'T' + s.e,
-          title: s.u ? 'Urgent Care' : (s.t || 'Regular Shift'),
-          details: s.r || '',
-          colorCode: s.u ? 'red' : (s.c || 'blue')
-        }));
+        const restoredShifts = shiftStrings.map(str => {
+          if (!str) return null;
+          const [dateStr, sTime, eTime, room, isUrgent] = str.split('~');
+          const year = dateStr.substring(0, 4);
+          const month = dateStr.substring(4, 6);
+          const day = dateStr.substring(6, 8);
+          const formattedDate = `${year}-${month}-${day}`;
+          
+          return {
+            id: Date.now().toString() + Math.random().toString(),
+            start: formattedDate + 'T' + sTime,
+            end: formattedDate + 'T' + eTime,
+            title: isUrgent === '1' ? 'Urgent Care' : 'Regular Shift',
+            details: room || '',
+            colorCode: isUrgent === '1' ? 'red' : 'blue'
+          };
+        }).filter(Boolean);
 
-        state.shifts = restoredShifts;
-        localStorage.setItem('vet_shifts_backup', JSON.stringify(restoredShifts));
+        if (restoredShifts.length > 0) {
+          state.shifts = restoredShifts;
+          localStorage.setItem('vet_shifts_backup', JSON.stringify(restoredShifts));
+        }
         
         window.history.replaceState(null, '', window.location.pathname);
         state.toastMsg = 'Shifts successfully synced to phone!';
@@ -526,34 +537,35 @@
         const qrContainer = document.getElementById('qrcode');
         if (qrContainer) {
           qrContainer.innerHTML = '';
-          if (typeof QRCode === 'undefined') {
-            alert("QR Library failed to load.");
-          } else {
-            const compactShifts = state.shifts.map(s => {
-              const [dateStr, startTime] = s.start.split('T');
-              const endTime = s.end.split('T')[1];
-              return {
-                d: dateStr,
-                s: startTime,
-                e: endTime,
-                r: s.details || '',
-                u: (s.colorCode === 'red' || s.title.includes('Urgent')) ? 1 : 0,
-                t: s.title,
-                c: s.colorCode
-              };
-            });
-            const encodedData = encodeURIComponent(btoa(JSON.stringify(compactShifts)));
-            const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodedData;
-            
-            new QRCode(qrContainer, {
-              text: syncUrl,
-              width: 256,
-              height: 256,
-              colorDark: "#000000",
-              colorLight: "#ffffff",
-              correctLevel: QRCode.CorrectLevel.L
-            });
-          }
+          
+          const compactString = state.shifts.map(s => {
+            const [datePart, startTime] = s.start.split('T');
+            const endTime = s.end.split('T')[1];
+            const dateNum = datePart.replace(/-/g, '');
+            const isUrgent = (s.colorCode === 'red' || s.title.includes('Urgent')) ? '1' : '0';
+            const room = s.details ? s.details.replace(/~/g, '-').replace(/\|/g, '-') : '';
+            return `${dateNum}~${startTime}~${endTime}~${room}~${isUrgent}`;
+          }).join('|');
+          
+          const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
+          
+          setTimeout(() => {
+            try {
+              if (typeof QRious === 'undefined') {
+                throw new Error("QRious library failed to load.");
+              }
+              const canvas = document.createElement('canvas');
+              qrContainer.appendChild(canvas);
+              new QRious({
+                element: canvas,
+                value: syncUrl,
+                size: 240,
+                level: 'L'
+              });
+            } catch (err) {
+              qrContainer.innerHTML = `<p style="color:red; font-size:12px;">Sync Error: ${err.message}</p>`;
+            }
+          }, 50);
         }
       }
     }
