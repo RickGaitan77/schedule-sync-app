@@ -115,15 +115,16 @@
     if (hash.startsWith('#sync=')) {
       try {
         const encodedData = hash.substring(6);
-        const decodedData = JSON.parse(decodeURIComponent(atob(encodedData)));
+        const decodedStr = atob(decodeURIComponent(encodedData));
+        const decodedData = JSON.parse(decodedStr);
         
         const restoredShifts = decodedData.map(s => ({
-          id: s.i || Date.now().toString() + Math.random().toString(),
-          start: s.s,
-          end: s.e,
-          title: s.t,
-          details: s.d || '',
-          colorCode: s.c || 'blue'
+          id: Date.now().toString() + Math.random().toString(),
+          start: s.d + 'T' + s.s,
+          end: s.d + 'T' + s.e,
+          title: s.u ? 'Urgent Care' : (s.t || 'Regular Shift'),
+          details: s.r || '',
+          colorCode: s.u ? 'red' : (s.c || 'blue')
         }));
 
         state.shifts = restoredShifts;
@@ -455,7 +456,7 @@
       `;
     }
 
-    function renderModals() {
+        function renderModals() {
       const modalContainer = document.getElementById('modal-container');
       let html = '';
 
@@ -510,40 +511,49 @@
                     <input type="datetime-local" id="edit-end" value="${shift.end.slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
                   </div>
                 </div>
-                <div class="pt-4 flex gap-3">
-                  <button type="button" onclick="closeEditModal()" class="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors font-medium text-sm">Cancel</button>
-                  <button type="submit" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20 transition-colors font-medium text-sm">Save Changes</button>
+                <div class="mt-6 flex justify-end gap-3">
+                  <button type="button" onclick="closeEditModal()" class="px-5 py-2.5 rounded-xl text-slate-400 font-medium hover:text-white hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors">Save Changes</button>
                 </div>
               </form>
             </div>
           </div>
         `;
       }
-
       modalContainer.innerHTML = html;
 
       if (state.showQrModal) {
         const qrContainer = document.getElementById('qrcode');
-        if (qrContainer && window.QRCode) {
+        if (qrContainer) {
           qrContainer.innerHTML = '';
-          const minified = state.shifts.map(s => ({
-            i: s.id.substring(0, 8),
-            s: s.start,
-            e: s.end,
-            t: s.title,
-            c: s.colorCode,
-            d: s.details
-          }));
-          const encoded = btoa(encodeURIComponent(JSON.stringify(minified)));
-          const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encoded;
-          new window.QRCode(qrContainer, {
-            text: syncUrl,
-            width: 240,
-            height: 240,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: window.QRCode.CorrectLevel.L
-          });
+          if (typeof QRCode === 'undefined') {
+            alert("QR Library failed to load.");
+          } else {
+            const compactShifts = state.shifts.map(s => {
+              const [dateStr, startTime] = s.start.split('T');
+              const endTime = s.end.split('T')[1];
+              return {
+                d: dateStr,
+                s: startTime,
+                e: endTime,
+                r: s.details || '',
+                u: (s.colorCode === 'red' || s.title.includes('Urgent')) ? 1 : 0,
+                t: s.title,
+                c: s.colorCode
+              };
+            });
+            const encodedData = encodeURIComponent(btoa(JSON.stringify(compactShifts)));
+            const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodedData;
+            
+            new QRCode(qrContainer, {
+              text: syncUrl,
+              width: 256,
+              height: 256,
+              colorDark: "#000000",
+              colorLight: "#ffffff",
+              correctLevel: QRCode.CorrectLevel.L
+            });
+          }
         }
       }
     }
