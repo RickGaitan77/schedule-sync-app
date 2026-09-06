@@ -137,15 +137,24 @@
       }
     }
 
-    function formatTime(isoString) {
-      const localString = isoString.replace('Z', '');
-      return new Date(localString).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    function formatTime(rawStr) {
+      if (!rawStr) return '';
+      const parts = rawStr.split('T');
+      if (parts.length !== 2) return rawStr;
+      let [h, m] = parts[1].split(':');
+      let hInt = parseInt(h, 10);
+      let ampm = hInt >= 12 ? 'PM' : 'AM';
+      hInt = hInt % 12;
+      if (hInt === 0) hInt = 12;
+      return `${hInt}:${m} ${ampm}`;
     }
 
     function renderShiftCard(shift) {
-      const shiftDate = new Date(shift.start.replace('Z', ''));
-      const monthStr = shiftDate.toLocaleDateString('en-US', { month: 'short' });
-      const dayStr = shiftDate.toLocaleDateString('en-US', { day: '2-digit' });
+      const parts = shift.start.split('T');
+      const [yearStr, monthStrNum, dayStrNum] = parts[0].split('-');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthStr = monthNames[parseInt(monthStrNum, 10) - 1];
+      const dayStr = dayStrNum;
       
       let borderColorClass = 'border-2 border-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.35)]';
       let textColorClass = 'text-blue-400';
@@ -494,11 +503,11 @@
                 <div class="grid grid-cols-2 gap-4">
                   <div>
                     <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Start Time</label>
-                    <input type="datetime-local" id="edit-start" value="${shift.start.replace('Z', '').slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                    <input type="datetime-local" id="edit-start" value="${shift.start.slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
                   </div>
                   <div>
                     <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">End Time</label>
-                    <input type="datetime-local" id="edit-end" value="${shift.end.replace('Z', '').slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                    <input type="datetime-local" id="edit-end" value="${shift.end.slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
                   </div>
                 </div>
                 <div class="pt-4 flex gap-3">
@@ -735,12 +744,12 @@
 
           // Inference constraints
           if (!startPeriod) {
-            if (startH >= 7 && startH <= 11) startPeriod = 'am';
-            else if (startH === 12 || startH < 7) startPeriod = 'pm';
+            if (startH >= 6 && startH <= 11) startPeriod = 'am';
+            else if (startH === 12 || startH < 6) startPeriod = 'pm';
           }
           if (!endPeriod) {
-            if (endH >= 1 && endH <= 9) endPeriod = 'pm';
-            else if (endH >= 10 || endH === 12) endPeriod = 'am';
+            if (endH >= 1 && endH <= 11) endPeriod = 'pm';
+            else if (endH === 12) endPeriod = 'pm';
           }
           
           if (startPeriod && startPeriod.startsWith('p') && startH < 12) startH += 12;
@@ -777,9 +786,9 @@
             title = 'Exams';
           }
 
-          let shiftDate = new Date(currentYear, currentMonth, day);
-          let startIso = new Date(shiftDate.setHours(startH, startM, 0, 0)).toISOString();
-          let endIso = new Date(shiftDate.setHours(endH, endM, 0, 0)).toISOString();
+          const pad = n => n.toString().padStart(2, '0');
+          let startIso = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}T${pad(startH)}:${pad(startM)}`;
+          let endIso = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}T${pad(endH)}:${pad(endM)}`;
 
           state.shifts.push({
             id: Date.now().toString() + Math.random().toString(),
@@ -839,8 +848,8 @@
       
       state.editingShift.title = document.getElementById('edit-title').value;
       state.editingShift.details = document.getElementById('edit-details').value;
-      state.editingShift.start = new Date(document.getElementById('edit-start').value).toISOString();
-      state.editingShift.end = new Date(document.getElementById('edit-end').value).toISOString();
+      state.editingShift.start = document.getElementById('edit-start').value;
+      state.editingShift.end = document.getElementById('edit-end').value;
       
       state.shifts = state.shifts.map(s => s.id === state.editingShift.id ? state.editingShift : s);
       localStorage.setItem('vet_shifts_backup', JSON.stringify(state.shifts));
@@ -851,8 +860,9 @@
 
     window.exportCalendar = function() {
       const shiftsToExport = state.shifts.filter(s => {
-        const d = new Date(s.start.replace('Z', ''));
-        return (d.getMonth() + 1).toString() === state.month && d.getFullYear().toString() === state.year;
+        const parts = s.start.split('T');
+        const [yearStr, monthStrNum] = parts[0].split('-');
+        return parseInt(monthStrNum, 10).toString() === state.month && yearStr === state.year;
       });
 
       if (shiftsToExport.length === 0) {
@@ -862,8 +872,8 @@
       
       let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScheduleSync//EN\r\n';
       shiftsToExport.forEach(shift => {
-        const start = shift.start.replace('Z', '').replace(/[-:]/g, '').split('.')[0];
-        const end = shift.end.replace('Z', '').replace(/[-:]/g, '').split('.')[0];
+        const start = shift.start.replace(/[-:]/g, '') + '00';
+        const end = shift.end.replace(/[-:]/g, '') + '00';
         
         ics += 'BEGIN:VEVENT\r\n';
         ics += `UID:${shift.id}@schedulesync\r\n`;
