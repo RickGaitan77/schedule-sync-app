@@ -635,11 +635,30 @@
       render();
 
       setTimeout(() => {
-        const text = state.transcript;
-        const dateRegex = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|tomorrow|today|\d{1,2}(?:st|nd|rd|th))\b/gi;
+        let text = state.transcript.toLowerCase();
         
+        // Homophone and phrasing cleanup for time parsing
+        text = text.replace(/\bto\b/g, '-');
+        text = text.replace(/\btill\b/g, '-');
+        text = text.replace(/\buntil\b/g, '-');
+        text = text.replace(/\bthru\b/g, '-');
+        text = text.replace(/\bfor\b/g, '4');
+        text = text.replace(/\bwon\b/g, '1');
+        text = text.replace(/\bone\b/g, '1');
+        text = text.replace(/\btoo\b/g, '2');
+        text = text.replace(/\btwo\b/g, '2');
+        text = text.replace(/\bthree\b/g, '3');
+        text = text.replace(/\bfour\b/g, '4');
+        text = text.replace(/\bfive\b/g, '5');
+
+        // Robust date boundary anchor regex
+        // Matches: month+day | mm/dd | dayname+day | standalone ordinals
+        const dateRegex = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+the)?\s+\d{1,2}(?:st|nd|rd|th)?|(?:on\s+)?(?:the\s+)?\d{1,2}(?:st|nd|rd|th))\b/gi;
+
+        // Use matchAll to avoid skipped regex lastIndex bugs
         let matches = [...text.matchAll(dateRegex)];
         let chunks = [];
+        
         if (matches.length === 0) {
           chunks.push(text);
         } else {
@@ -655,105 +674,110 @@
         }
 
         const currentYear = parseInt(state.year) || new Date().getFullYear();
-        let fallbackMonth = parseInt(state.month) - 1;
+        let currentMonth = parseInt(state.month) - 1; // Carry forward the UI active month by default
         let newShiftsCount = 0;
 
         chunks.forEach(chunk => {
           chunk = chunk.trim();
           if (!chunk) return;
 
-          let month = fallbackMonth;
           let day = null;
-          let year = currentYear;
-
-          const namedMatch = chunk.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
-          const numMatch = chunk.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
-          const dayMatch = chunk.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
-          const todayMatch = chunk.match(/\b(today|tomorrow)\b/i);
-
-          if (namedMatch) {
-            const mStr = namedMatch[1].toLowerCase();
+          
+          // 1. Month Extractor
+          const monthMatch = chunk.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
+          if (monthMatch) {
+            const mStr = monthMatch[1].toLowerCase();
             const monthMap = { jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3, may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7, sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11 };
-            month = monthMap[mStr];
-            day = parseInt(namedMatch[2]);
-            fallbackMonth = month;
-          } else if (numMatch) {
-            month = parseInt(numMatch[1]) - 1;
-            day = parseInt(numMatch[2]);
-            if (numMatch[3]) {
-              year = parseInt(numMatch[3]);
-              if (year < 100) year += 2000;
+            if (monthMap[mStr] !== undefined) {
+              currentMonth = monthMap[mStr]; // Keep carrying forward
             }
-            fallbackMonth = month;
-          } else if (dayMatch) {
-            day = parseInt(dayMatch[1]);
-          } else if (todayMatch) {
-            let d = new Date();
-            if (todayMatch[1].toLowerCase() === 'tomorrow') d.setDate(d.getDate() + 1);
-            month = d.getMonth();
-            day = d.getDate();
-            year = d.getFullYear();
+          } else {
+             const numMatch = chunk.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+             if (numMatch) {
+                 currentMonth = parseInt(numMatch[1]) - 1;
+             }
           }
 
-          const timeMatch = chunk.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*(?:to|-|until|till|thru)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/i);
+          // 2. Day Extractor
+          const numMatch = chunk.match(/\b\d{1,2}[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?\b/);
+          const ordinalMatch = chunk.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
+          const plainDayMatch = chunk.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\b/i);
+
+          if (numMatch) {
+            day = parseInt(numMatch[1]);
+          } else if (ordinalMatch) {
+            day = parseInt(ordinalMatch[1]);
+          } else if (plainDayMatch) {
+            day = parseInt(plainDayMatch[1]);
+          }
+
+          // 3. Time Extractor (Non-greedy inherent due to anchor blocks)
+          const timeMatch = chunk.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/i);
+
+          if (day === null && !timeMatch) {
+            console.warn("DEBUG: Skipping chunk (no date/time found):", chunk);
+            return;
+          }
+          if (!timeMatch) {
+            console.warn("DEBUG: Skipping chunk (no valid time string found):", chunk);
+            return; 
+          }
           
-          if (day === null && !timeMatch) return; 
           if (day === null) day = new Date().getDate();
 
-          let startH = 9, startM = 0, endH = 17, endM = 0;
-          if (timeMatch) {
-            startH = parseInt(timeMatch[1]);
-            startM = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-            let startPeriod = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
-            
-            endH = parseInt(timeMatch[4]);
-            endM = timeMatch[5] ? parseInt(timeMatch[5]) : 0;
-            let endPeriod = timeMatch[6] ? timeMatch[6].toLowerCase() : null;
-            
-            if (!startPeriod) {
-              if (startH >= 7 && startH <= 11) startPeriod = 'am';
-              else if (startH === 12 || startH < 7) startPeriod = 'pm';
-            }
-            if (!endPeriod) {
-              if (endH >= 1 && endH <= 9) endPeriod = 'pm';
-              else if (endH >= 10 || endH === 12) endPeriod = 'am';
-            }
-            
-            if (startPeriod && startPeriod.startsWith('p') && startH < 12) startH += 12;
-            if (startPeriod && startPeriod.startsWith('a') && startH === 12) startH = 0;
-            
-            if (endPeriod && endPeriod.startsWith('p') && endH < 12) endH += 12;
-            if (endPeriod && endPeriod.startsWith('a') && endH === 12) endH = 0;
-          }
+          let startH = parseInt(timeMatch[1]);
+          let startM = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          let startPeriod = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+          
+          let endH = parseInt(timeMatch[4]);
+          let endM = timeMatch[5] ? parseInt(timeMatch[5]) : 0;
+          let endPeriod = timeMatch[6] ? timeMatch[6].toLowerCase() : null;
 
+          // Inference constraints
+          if (!startPeriod) {
+            if (startH >= 7 && startH <= 11) startPeriod = 'am';
+            else if (startH === 12 || startH < 7) startPeriod = 'pm';
+          }
+          if (!endPeriod) {
+            if (endH >= 1 && endH <= 9) endPeriod = 'pm';
+            else if (endH >= 10 || endH === 12) endPeriod = 'am';
+          }
+          
+          if (startPeriod && startPeriod.startsWith('p') && startH < 12) startH += 12;
+          if (startPeriod && startPeriod.startsWith('a') && startH === 12) startH = 0;
+          
+          if (endPeriod && endPeriod.startsWith('p') && endH < 12) endH += 12;
+          if (endPeriod && endPeriod.startsWith('a') && endH === 12) endH = 0;
+
+          // 4. Room and Flag Extractor
           let details = '';
-          const roomMatch = chunk.match(/\broom\s+([a-z0-9]+)/i);
+          const roomMatch = chunk.match(/\broom\s+([a-z0-9]+)\b/i);
           const isoMatch = chunk.match(/\biso\b/i);
           const dentalMatch = chunk.match(/\bdental\b/i);
+          const frontDeskMatch = chunk.match(/\bfront desk\b/i);
           
           if (roomMatch) details = 'Room ' + roomMatch[1].toUpperCase();
           else if (isoMatch) details = 'ISO';
           else if (dentalMatch) details = 'Dental';
-          else if (chunk.match(/\bfront desk\b/i)) details = 'Front Desk';
+          else if (frontDeskMatch) details = 'Front Desk';
 
           let colorCode = 'blue';
           let title = 'Regular Shift';
-          const chunkLower = chunk.toLowerCase();
           
-          if (chunkLower.match(/\b(urgent care|urgent|uc)\b/)) {
+          if (chunk.match(/\b(urgent care|urgent|uc)\b/)) {
             colorCode = 'red';
             title = 'Urgent Care';
-          } else if (chunkLower.match(/\bsurgery\b/)) {
+          } else if (chunk.match(/\bsurgery\b/)) {
             colorCode = 'amber';
             title = 'Surgery';
-          } else if (chunkLower.match(/\bdrop(?:-off|s)?\b/)) {
+          } else if (chunk.match(/\bdrop(?:\s*off|s)?\b/)) {
             colorCode = 'violet';
             title = 'Drop-Offs';
-          } else if (chunkLower.match(/\bexam(s)?\b/)) {
+          } else if (chunk.match(/\bexam(s)?\b/)) {
             title = 'Exams';
           }
 
-          let shiftDate = new Date(year, month, day);
+          let shiftDate = new Date(currentYear, currentMonth, day);
           let startIso = new Date(shiftDate.setHours(startH, startM, 0, 0)).toISOString();
           let endIso = new Date(shiftDate.setHours(endH, endM, 0, 0)).toISOString();
 
@@ -771,7 +795,7 @@
         state.transcript = '';
         state.isProcessing = false;
         state.statusMsg = '';
-        state.toastMsg = `Successfully parsed ${newShiftsCount} shifts!`;
+        state.toastMsg = `Successfully added ${newShiftsCount} shifts.`;
         localStorage.setItem('vet_shifts_backup', JSON.stringify(state.shifts));
         
         render();
@@ -781,7 +805,7 @@
           render();
         }, 4000);
       }, 800);
-    }
+    };
 
     window.openQrModal = function() {
       state.showQrModal = true;
