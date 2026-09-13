@@ -59,7 +59,6 @@
     .wave-delay-3 { animation-delay: 0.1s; }
     .wave-delay-4 { animation-delay: 0.3s; }
 
-    /* iPhone Safe Area Notch Spacing */
     .notch-safe-header {
       padding-top: max(1.25rem, env(safe-area-inset-top, 24px)) !important;
     }
@@ -108,6 +107,18 @@
       toastMsg: '',
     };
 
+    // Centralized storage persistence helper
+    function persist() {
+      try {
+        const payload = JSON.stringify(state.shifts);
+        localStorage.setItem('vet_shifts_backup', payload);
+        localStorage.setItem('schedule_sync_shifts', payload);
+      } catch (err) {
+        console.error('Storage persistence error (storage full or private browsing):', err);
+      }
+    }
+
+    // Load initial data from storage
     try {
       const saved = localStorage.getItem('vet_shifts_backup') || localStorage.getItem('schedule_sync_shifts');
       if (saved) {
@@ -116,6 +127,21 @@
       }
     } catch(e) {}
 
+    // Pure string date extractor (avoids UTC timezone shifts)
+    function parseDateParts(isoStr) {
+      if (!isoStr) return { y: 2026, m: 1, d: 1, h: 0, min: 0 };
+      const [datePart, timePart] = isoStr.replace('Z', '').split('T');
+      const [y, m, d] = datePart.split('-').map(Number);
+      let h = 0, min = 0;
+      if (timePart) {
+        const [hh, mm] = timePart.split(':').map(Number);
+        h = hh || 0;
+        min = mm || 0;
+      }
+      return { y, m, d, h, min };
+    }
+
+    // QR Import Listener
     const hash = window.location.hash;
     if (hash.startsWith('#sync=')) {
       try {
@@ -126,15 +152,11 @@
         const restoredShifts = shiftStrings.map(str => {
           if (!str) return null;
           const [dateStr, sTime, eTime, room, isUrgent] = str.split('~');
-          const year = dateStr.substring(0, 4);
-          const month = dateStr.substring(4, 6);
-          const day = dateStr.substring(6, 8);
-          const formattedDate = `${year}-${month}-${day}`;
           
           return {
             id: Date.now().toString() + Math.random().toString(),
-            start: formattedDate + 'T' + sTime,
-            end: formattedDate + 'T' + eTime,
+            start: dateStr + 'T' + sTime,
+            end: dateStr + 'T' + eTime,
             title: isUrgent === '1' ? 'Urgent Care' : 'Regular Shift',
             details: room || '',
             colorCode: isUrgent === '1' ? 'red' : 'blue'
@@ -143,7 +165,7 @@
 
         if (restoredShifts.length > 0) {
           state.shifts = restoredShifts;
-          localStorage.setItem('vet_shifts_backup', JSON.stringify(restoredShifts));
+          persist();
         }
         
         window.history.replaceState(null, '', window.location.pathname);
@@ -152,21 +174,6 @@
       } catch (e) {
         console.error('Failed to parse synced shifts:', e);
       }
-    }
-
-    // Bulletproof Safari Local Date Parser (No Timezone Shifting)
-    function parseLocalDate(isoStr) {
-      if (!isoStr) return new Date(NaN);
-      const clean = isoStr.replace('Z', '');
-      const parts = clean.split('T');
-      const [y, m, d] = parts[0].split('-').map(Number);
-      let h = 0, min = 0;
-      if (parts[1]) {
-        const [hh, mm] = parts[1].split(':').map(Number);
-        h = hh || 0;
-        min = mm || 0;
-      }
-      return new Date(y, m - 1, d, h, min);
     }
 
     function formatTime(rawStr) {
@@ -182,11 +189,10 @@
     }
 
     function renderShiftCard(shift) {
-      const parts = shift.start.split('T');
-      const [yearStr, monthStrNum, dayStrNum] = parts[0].split('-');
+      const { y, m, d } = parseDateParts(shift.start);
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const monthStr = monthNames[parseInt(monthStrNum, 10) - 1];
-      const dayStr = dayStrNum;
+      const monthStr = monthNames[m - 1] || '---';
+      const dayStr = d.toString().padStart(2, '0');
       
       let borderColorClass = 'border-2 border-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.35)]';
       let textColorClass = 'text-blue-400';
@@ -257,27 +263,45 @@
     }
 
     function renderDashboard(container) {
-      const windowStart = new Date();
-      windowStart.setHours(0, 0, 0, 0);
-      const windowEnd = new Date(windowStart);
-      windowEnd.setDate(windowStart.getDate() + 7);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const allShiftsSorted = [...state.shifts].sort((a, b) => {
+        const da = parseDateParts(a.start);
+        const db = parseDateParts(b.start);
+        return new Date(da.y, da.m - 1, da.d, da.h, da.min) - new Date(db.y, db.m - 1, db.d, db.h, db.min);
+      });
+
+      const windowEnd = new Date(today);
+      windowEnd.setDate(today.getDate() + 7);
       windowEnd.setHours(23, 59, 59, 999);
-      
-      const dashboardShifts = state.shifts.filter(s => {
-        const d = parseLocalDate(s.start);
-        return d >= windowStart && d <= windowEnd;
-      }).sort((a,b) => parseLocalDate(a.start).getTime() - parseLocalDate(b.start).getTime());
+
+      let displayedShifts = allShiftsSorted.filter(s => {
+        const p = parseDateParts(s.start);
+        const d = new Date(p.y, p.m - 1, p.d, p.h, p.min);
+        return d >= today && d <= windowEnd;
+      });
+
+      let sectionTitle = "Shift Matrix (Next 7 Days)";
+      let badgeLabel = `${displayedShifts.length} UPCOMING`;
+
+      // Fallback: If no shifts in the current 7 days, show the next upcoming shifts so the view is never empty
+      if (displayedShifts.length === 0 && allShiftsSorted.length > 0) {
+        displayedShifts = allShiftsSorted.slice(0, 8);
+        sectionTitle = "Upcoming Schedule Matrix";
+        badgeLabel = `${allShiftsSorted.length} TOTAL SCHEDULED`;
+      }
 
       let shiftsHtml = '';
-      if (dashboardShifts.length === 0) {
+      if (displayedShifts.length === 0) {
         shiftsHtml = `
-          <div class="h-full min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-8">
+          <div class="min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-10">
             <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
-            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts scheduled for the next 7 days</p>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Dictate above to begin.</p>
           </div>
         `;
       } else {
-        shiftsHtml = dashboardShifts.map(shift => renderShiftCard(shift)).join('');
+        shiftsHtml = displayedShifts.map(shift => renderShiftCard(shift)).join('');
       }
 
       let waveHtml = '';
@@ -287,25 +311,25 @@
 
       const currentMonthName = new Date(0, parseInt(state.month) - 1).toLocaleString('default', { month: 'long' });
       const monthWorkingShifts = state.shifts.filter(s => {
-        const d = parseLocalDate(s.start);
-        return (d.getMonth() + 1).toString() === state.month && d.getFullYear().toString() === state.year;
+        const p = parseDateParts(s.start);
+        return p.m.toString() === state.month && p.y.toString() === state.year;
       });
       const exportDisabled = monthWorkingShifts.length === 0 ? 'disabled' : '';
 
       container.innerHTML = `
         <div class="min-h-full lg:h-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-6 gap-4 sm:gap-6 pb-24 lg:pb-0">
           
-          <!-- 1. Next 7 Days Matrix (Locked height & visibility on mobile) -->
-          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[300px] lg:min-h-0 order-1">
+          <!-- 1. Next 7 Days / Upcoming Matrix (Lock mobile min-height so it NEVER shrinks away) -->
+          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[300px] shrink-0 lg:shrink order-1">
             <div class="p-4 border-b border-slate-800/50 flex justify-between items-center shrink-0">
-              <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">Shift Matrix (Next 7 Days)</h2>
+              <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
               <div class="flex gap-2">
                 <span class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
-                  ${dashboardShifts.length} UPCOMING
+                  ${badgeLabel}
                 </span>
               </div>
             </div>
-            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[380px] lg:max-h-none scroll-hide">
+            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[420px] lg:max-h-none scroll-hide">
               ${shiftsHtml}
             </div>
           </div>
@@ -316,11 +340,11 @@
               <div class="w-2 h-2 rounded-full ${state.isListening ? 'bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse' : 'bg-violet-500 shadow-[0_0_10px_#a855f7]'}"></div>
             </div>
             <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400 mb-4 shrink-0">Input Interface</h2>
-            <div class="flex-1 flex flex-col gap-4 min-h-[220px]">
+            <div class="flex-1 flex flex-col gap-4 min-h-[200px]">
               <div class="relative group flex-1 flex flex-col">
                 <textarea
                   id="transcript-input"
-                  class="w-full h-full min-h-[120px] bg-slate-950/50 border border-slate-800 rounded-2xl p-4 pb-14 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-all placeholder:text-slate-700 resize-none custom-scrollbar"
+                  class="w-full h-full min-h-[110px] bg-slate-950/50 border border-slate-800 rounded-2xl p-4 pb-14 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-all placeholder:text-slate-700 resize-none custom-scrollbar"
                   placeholder="PASTE SCHEDULE DATA OR SPEAK..."
                 >${state.transcript}</textarea>
                 <div class="absolute bottom-4 right-4 flex gap-2">
@@ -402,16 +426,20 @@
       const daysInMonth = new Date(y, m + 1, 0).getDate();
       
       const monthWorkingShifts = state.shifts.filter(s => {
-        const d = parseLocalDate(s.start);
-        return d.getMonth() === m && d.getFullYear() === y;
-      }).sort((a,b) => parseLocalDate(a.start).getTime() - parseLocalDate(b.start).getTime());
+        const p = parseDateParts(s.start);
+        return (p.m - 1) === m && p.y === y;
+      }).sort((a,b) => {
+        const da = parseDateParts(a.start);
+        const db = parseDateParts(b.start);
+        return new Date(da.y, da.m - 1, da.d, da.h, da.min) - new Date(db.y, db.m - 1, db.d, db.h, db.min);
+      });
 
       const daysOff = [];
       for(let i=1; i<=daysInMonth; i++) {
         const currentDate = new Date(y, m, i);
         const hasShift = monthWorkingShifts.some(s => {
-          const d = parseLocalDate(s.start);
-          return d.getDate() === i;
+          const p = parseDateParts(s.start);
+          return p.d === i;
         });
         if(!hasShift) {
           daysOff.push(currentDate);
@@ -434,10 +462,10 @@
             </div>
           `;
         } else {
-          contentHtml = `<div class="space-y-4">` + monthWorkingShifts.map(s => renderShiftCard(s)).join('') + `</div>`;
+          contentHtml = `<div class="space-y-3">` + monthWorkingShifts.map(s => renderShiftCard(s)).join('') + `</div>`;
         }
       } else {
-        contentHtml = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">` + daysOff.map(date => `
+        contentHtml = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">` + daysOff.map(date => `
           <div class="p-4 bg-slate-800/20 border border-slate-700/30 rounded-2xl flex flex-col items-center justify-center text-center gap-1 hover:border-cyan-500/30 transition-colors">
             <span class="text-[10px] uppercase font-mono text-slate-500">${date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
             <span class="text-2xl font-bold text-slate-400">${date.getDate()}</span>
@@ -447,7 +475,7 @@
       }
 
       container.innerHTML = `
-        <div class="h-full bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl overflow-hidden">
+        <div class="h-full bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl overflow-hidden min-h-[400px]">
           <div class="p-4 border-b border-slate-800/50 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
             <div class="flex items-center gap-3">
               <select 
@@ -502,8 +530,8 @@
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
               <h3 class="text-xl font-bold text-white mb-2">Sync to Phone</h3>
-              <p class="text-sm text-slate-400 text-center mb-8">Scan this QR code with your phone's camera to instantly import your entire schedule.</p>
-              <div class="bg-white p-4 rounded-2xl mb-8">
+              <p class="text-sm text-slate-400 text-center mb-6">Scan this QR code with your iPhone camera to instantly import your entire schedule.</p>
+              <div class="bg-white p-4 rounded-2xl mb-6">
                 <div id="qrcode"></div>
               </div>
               <button onclick="closeQrModal()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 transition-colors">Done</button>
@@ -564,10 +592,9 @@
           const compactString = state.shifts.map(s => {
             const [datePart, startTime] = s.start.split('T');
             const endTime = s.end.split('T')[1];
-            const dateNum = datePart.replace(/-/g, '');
             const isUrgent = (s.colorCode === 'red' || s.title.includes('Urgent')) ? '1' : '0';
             const room = s.details ? s.details.replace(/~/g, '-').replace(/\|/g, '-') : '';
-            return `${dateNum}~${startTime}~${endTime}~${room}~${isUrgent}`;
+            return `${datePart}~${startTime}~${endTime}~${room}~${isUrgent}`;
           }).join('|');
           
           const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
@@ -630,33 +657,41 @@
       lucide.createIcons();
     }
 
+    // Speech Recognition with Buffer Flush on Session End
     let recognition = null;
+    let pendingInterimText = '';
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
     if (SpeechRecognition) {
       recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       
       recognition.onresult = (event) => {
-        let finalTranscript = '';
+        pendingInterimText = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + ' ';
+            state.transcript += (state.transcript ? ' ' : '') + event.results[i][0].transcript.trim();
+          } else {
+            pendingInterimText += event.results[i][0].transcript;
           }
         }
-        if (finalTranscript) {
-          state.transcript += (state.transcript ? ' ' : '') + finalTranscript.trim();
-          render();
-        }
+        render();
       };
 
       recognition.onerror = (event) => {
-        console.error('Speech error:', event.error);
+        console.error('Speech recognition error:', event.error);
         state.isListening = false;
         render();
       };
 
       recognition.onend = () => {
+        // Flush any trailing spoken buffer so the last shift is never discarded
+        if (pendingInterimText.trim()) {
+          state.transcript += (state.transcript ? ' ' : '') + pendingInterimText.trim();
+          pendingInterimText = '';
+        }
+        state.transcript = state.transcript.trim();
         state.isListening = false;
         render();
       };
@@ -669,6 +704,7 @@
       } else {
         if (recognition) {
           try {
+            pendingInterimText = '';
             recognition.start();
             state.isListening = true;
           } catch(e) {
@@ -691,7 +727,6 @@
       setTimeout(() => {
         let text = state.transcript.toLowerCase();
         
-        // Homophone and phrasing cleanup for time parsing
         text = text.replace(/\bto\b/g, '-');
         text = text.replace(/\btill\b/g, '-');
         text = text.replace(/\buntil\b/g, '-');
@@ -836,7 +871,9 @@
         state.isProcessing = false;
         state.statusMsg = '';
         state.toastMsg = `Successfully added ${newShiftsCount} shifts.`;
-        localStorage.setItem('vet_shifts_backup', JSON.stringify(state.shifts));
+        
+        // Persist to dual local storage keys
+        persist();
         
         render();
 
@@ -869,7 +906,7 @@
 
     window.removeShift = function(id) {
       state.shifts = state.shifts.filter(s => s.id !== id);
-      localStorage.setItem('vet_shifts_backup', JSON.stringify(state.shifts));
+      persist();
       render();
     };
 
@@ -883,7 +920,7 @@
       state.editingShift.end = document.getElementById('edit-end').value;
       
       state.shifts = state.shifts.map(s => s.id === state.editingShift.id ? state.editingShift : s);
-      localStorage.setItem('vet_shifts_backup', JSON.stringify(state.shifts));
+      persist();
       
       state.editingShift = null;
       render();
@@ -891,9 +928,8 @@
 
     window.exportCalendar = function() {
       const shiftsToExport = state.shifts.filter(s => {
-        const parts = s.start.split('T');
-        const [yearStr, monthStrNum] = parts[0].split('-');
-        return parseInt(monthStrNum, 10).toString() === state.month && yearStr === state.year;
+        const p = parseDateParts(s.start);
+        return p.m.toString() === state.month && p.y.toString() === state.year;
       });
 
       if (shiftsToExport.length === 0) {
@@ -929,7 +965,7 @@
       window.URL.revokeObjectURL(url);
     };
 
-    // Initialize
+    // Initialize application
     render();
   </script>
 </body>
