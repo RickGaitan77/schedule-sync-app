@@ -107,18 +107,18 @@
       toastMsg: '',
     };
 
-    // Centralized storage persistence helper
+    // Centralized Storage Helper
     function persist() {
       try {
         const payload = JSON.stringify(state.shifts);
         localStorage.setItem('vet_shifts_backup', payload);
         localStorage.setItem('schedule_sync_shifts', payload);
       } catch (err) {
-        console.error('Storage persistence error (storage full or private browsing):', err);
+        console.error('Storage persistence failed (storage quota or private mode):', err);
       }
     }
 
-    // Load initial data from storage
+    // Load initial shifts from storage
     try {
       const saved = localStorage.getItem('vet_shifts_backup') || localStorage.getItem('schedule_sync_shifts');
       if (saved) {
@@ -126,6 +126,21 @@
         if (Array.isArray(parsed)) state.shifts = parsed;
       }
     } catch(e) {}
+
+    // Multi-tab storage sync listener (prevents PC background tabs from clobbering active data)
+    window.addEventListener('storage', (e) => {
+      if ((e.key === 'vet_shifts_backup' || e.key === 'schedule_sync_shifts') && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (Array.isArray(updated)) {
+            state.shifts = updated;
+            render();
+          }
+        } catch (err) {
+          console.error('Multi-tab sync error:', err);
+        }
+      }
+    });
 
     // Pure string date extractor (avoids UTC timezone shifts)
     function parseDateParts(isoStr) {
@@ -141,7 +156,7 @@
       return { y, m, d, h, min };
     }
 
-    // QR Import Listener
+    // QR Import Listener with Deduplication and Merging (Never Wipes Phone Data)
     const hash = window.location.hash;
     if (hash.startsWith('#sync=')) {
       try {
@@ -164,12 +179,20 @@
         }).filter(Boolean);
 
         if (restoredShifts.length > 0) {
-          state.shifts = restoredShifts;
+          // Merge by unique shift fingerprint: Start | End | Details
+          const key = s => `${s.start.slice(0, 16)}|${s.end.slice(0, 16)}|${s.details || ''}`;
+          const existingMap = new Map(state.shifts.map(s => [key(s), s]));
+          
+          for (const s of restoredShifts) {
+            existingMap.set(key(s), s);
+          }
+          
+          state.shifts = [...existingMap.values()];
           persist();
         }
         
         window.history.replaceState(null, '', window.location.pathname);
-        state.toastMsg = 'Shifts successfully synced to phone!';
+        state.toastMsg = 'Shifts successfully merged and synced!';
         setTimeout(() => { state.toastMsg = ''; render(); }, 3000);
       } catch (e) {
         console.error('Failed to parse synced shifts:', e);
@@ -285,7 +308,7 @@
       let sectionTitle = "Shift Matrix (Next 7 Days)";
       let badgeLabel = `${displayedShifts.length} UPCOMING`;
 
-      // Fallback: If no shifts in the current 7 days, show the next upcoming shifts so the view is never empty
+      // Fail-Safe: If no shifts in rolling 7-day window, show next upcoming so dashboard is never empty
       if (displayedShifts.length === 0 && allShiftsSorted.length > 0) {
         displayedShifts = allShiftsSorted.slice(0, 8);
         sectionTitle = "Upcoming Schedule Matrix";
@@ -686,7 +709,6 @@
       };
 
       recognition.onend = () => {
-        // Flush any trailing spoken buffer so the last shift is never discarded
         if (pendingInterimText.trim()) {
           state.transcript += (state.transcript ? ' ' : '') + pendingInterimText.trim();
           pendingInterimText = '';
@@ -727,11 +749,14 @@
       setTimeout(() => {
         let text = state.transcript.toLowerCase();
         
+        // Contextual Homophone & Phrase Normalization
         text = text.replace(/\bto\b/g, '-');
         text = text.replace(/\btill\b/g, '-');
         text = text.replace(/\buntil\b/g, '-');
         text = text.replace(/\bthru\b/g, '-');
-        text = text.replace(/\bfor\b/g, '4');
+        
+        // Strict Room & Number Normalization (Avoids Mangling Conversational "for")
+        text = text.replace(/\b(?:room|rm|no|number)\s+for\b/g, 'room 4');
         text = text.replace(/\bwon\b/g, '1');
         text = text.replace(/\bone\b/g, '1');
         text = text.replace(/\btoo\b/g, '2');
@@ -802,14 +827,21 @@
           
           if (day === null) day = new Date().getDate();
 
-          let startH = parseInt(timeMatch[1]);
-          let startM = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          let startH = parseInt(timeMatch[1], 10);
+          let startM = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
           let startPeriod = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
           
-          let endH = parseInt(timeMatch[4]);
-          let endM = timeMatch[5] ? parseInt(timeMatch[5]) : 0;
+          let endH = parseInt(timeMatch[4], 10);
+          let endM = timeMatch[5] ? parseInt(timeMatch[5], 10) : 0;
           let endPeriod = timeMatch[6] ? timeMatch[6].toLowerCase() : null;
 
+          // Strict NaN Validation Guard
+          if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM) || isNaN(day)) {
+            console.warn("Skipping corrupt chunk:", chunk);
+            return;
+          }
+
+          // AM/PM Inference Rules
           if (!startPeriod) {
             if (startH >= 6 && startH <= 11) startPeriod = 'am';
             else if (startH === 12 || startH < 6) startPeriod = 'pm';
@@ -824,6 +856,21 @@
           
           if (endPeriod && endPeriod.startsWith('p') && endH < 12) endH += 12;
           if (endPeriod && endPeriod.startsWith('a') && endH === 12) endH = 0;
+
+          // Overnight Shift Calculation (Crosses Midnight)
+          let endYear = currentYear;
+          let endMonth = currentMonth;
+          let endDay = day;
+
+          const startTotalMinutes = startH * 60 + startM;
+          const endTotalMinutes = endH * 60 + endM;
+
+          if (endTotalMinutes < startTotalMinutes) {
+            const nextDayDate = new Date(currentYear, currentMonth, day + 1);
+            endYear = nextDayDate.getFullYear();
+            endMonth = nextDayDate.getMonth();
+            endDay = nextDayDate.getDate();
+          }
 
           let details = '';
           const roomMatch = chunk.match(/\broom\s+([a-z0-9]+)\b/i);
@@ -854,7 +901,7 @@
 
           const pad = n => n.toString().padStart(2, '0');
           let startIso = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}T${pad(startH)}:${pad(startM)}`;
-          let endIso = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}T${pad(endH)}:${pad(endM)}`;
+          let endIso = `${endYear}-${pad(endMonth + 1)}-${pad(endDay)}T${pad(endH)}:${pad(endM)}`;
 
           state.shifts.push({
             id: Date.now().toString() + Math.random().toString(),
@@ -872,9 +919,7 @@
         state.statusMsg = '';
         state.toastMsg = `Successfully added ${newShiftsCount} shifts.`;
         
-        // Persist to dual local storage keys
         persist();
-        
         render();
 
         setTimeout(() => {
@@ -937,14 +982,16 @@
         return;
       }
       
-      let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScheduleSync//EN\r\n';
+      const nowUtc = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScheduleSync//EN\r\nCALSCALE:GREGORIAN\r\n';
+      
       shiftsToExport.forEach(shift => {
         const start = shift.start.replace(/[-:]/g, '') + '00';
         const end = shift.end.replace(/[-:]/g, '') + '00';
         
         ics += 'BEGIN:VEVENT\r\n';
         ics += `UID:${shift.id}@schedulesync\r\n`;
-        ics += `DTSTAMP:${start}\r\n`;
+        ics += `DTSTAMP:${nowUtc}\r\n`;
         ics += `DTSTART:${start}\r\n`;
         ics += `DTEND:${end}\r\n`;
         ics += `SUMMARY:${shift.title}\r\n`;
