@@ -3,14 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Schedule Sync</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
     @keyframes pulse-shadow-red {
@@ -61,15 +58,7 @@
     .wave-delay-4 { animation-delay: 0.3s; }
 
     .notch-safe-header {
-      padding-top: max(1.25rem, env(safe-area-inset-top, 24px)) !important;
-    }
-
-    /* Keep camera preview crisp and proportional */
-    #reader video {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover !important;
-      border-radius: 1rem;
+      padding-top: max(1rem, env(safe-area-inset-top, 16px)) !important;
     }
   </style>
 </head>
@@ -83,7 +72,7 @@
         </div>
         <div>
           <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">Schedule Sync</h1>
-          <p class="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Neural Link Active</p>
+          <p class="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Active Link</p>
         </div>
       </div>
       <div class="flex gap-2">
@@ -98,36 +87,6 @@
   </div>
 
   <div id="modal-container"></div>
-  
-  <!-- In-App Camera Scanner Modal -->
-  <div id="scanner-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-    <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full flex flex-col items-center shadow-2xl relative">
-      <button onclick="closeScannerModal()" class="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors">
-        <i data-lucide="x" class="w-5 h-5"></i>
-      </button>
-      <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
-        <i data-lucide="scan-line" class="w-5 h-5 text-cyan-400"></i> Scan PC Screen
-      </h3>
-      <p class="text-xs text-slate-400 text-center mb-4">Hold phone 12–18 inches away from your monitor.</p>
-      
-      <!-- Video Container with Visual Target Guide -->
-      <div class="relative w-full aspect-square rounded-2xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center shadow-inner">
-        <div id="reader" class="w-full h-full"></div>
-        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div class="w-56 h-56 border-2 border-dashed border-cyan-400/80 rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.25)] flex items-center justify-center">
-            <div class="w-2 h-2 rounded-full bg-cyan-400/60"></div>
-          </div>
-        </div>
-      </div>
-      
-      <div id="scanner-status" class="mt-3 text-xs font-mono text-cyan-400 text-center">Starting camera...</div>
-      
-      <button onclick="closeScannerModal()" class="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-medium transition-colors">
-        Cancel
-      </button>
-    </div>
-  </div>
-
   <div id="toast-container"></div>
 
   <script>
@@ -193,14 +152,13 @@
       return { y, m, d, h, min };
     }
 
-    function handleScannedData(rawString) {
+    // Auto-import when scanned via iPhone Camera
+    const hash = window.location.hash;
+    if (hash.startsWith('#sync=')) {
       try {
-        let encoded = rawString;
-        if (rawString.includes('#sync=')) {
-          encoded = rawString.split('#sync=')[1];
-        }
-        const decoded = decodeURIComponent(encoded);
-        const shiftStrings = decoded.split('|');
+        const encodedData = hash.substring(6);
+        const decodedData = decodeURIComponent(encodedData);
+        const shiftStrings = decodedData.split('|');
 
         const restored = shiftStrings.map(str => {
           if (!str) return null;
@@ -236,19 +194,13 @@
           for (const s of restored) map.set(s.id, s);
           state.shifts = [...map.values()];
           persist();
-          state.toastMsg = `Successfully synced ${restored.length} shifts to app!`;
+          state.toastMsg = `Synced ${restored.length} shifts to your device!`;
         }
-        render();
+        window.history.replaceState(null, '', window.location.pathname);
         setTimeout(() => { state.toastMsg = ''; render(); }, 4000);
       } catch (e) {
-        alert('Failed to parse schedule QR code: ' + e.message);
+        console.error('Failed to parse schedule QR code:', e);
       }
-    }
-
-    const hash = window.location.hash;
-    if (hash.startsWith('#sync=')) {
-      handleScannedData(window.location.href);
-      window.history.replaceState(null, '', window.location.pathname);
     }
 
     function formatTime(rawStr) {
@@ -371,7 +323,7 @@
         shiftsHtml = `
           <div class="min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-10">
             <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
-            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Tap "Scan PC QR" above or dictate.</p>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Scan from PC to begin.</p>
           </div>
         `;
       } else {
@@ -386,9 +338,9 @@
       container.innerHTML = `
         <div class="min-h-full lg:h-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-6 gap-4 sm:gap-6 pb-24 lg:pb-0">
           
-          <!-- 1. Shift Matrix with Header Action Controls -->
-          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[340px] shrink-0 lg:shrink order-1">
-            <div class="p-3 sm:p-4 border-b border-slate-800/50 flex flex-wrap justify-between items-center gap-2 shrink-0">
+          <!-- 1. Schedule Matrix (Visible on phone & PC) -->
+          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[340px] shrink-0 lg:shrink">
+            <div class="p-3 sm:p-4 border-b border-slate-800/50 flex justify-between items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
                 <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
@@ -396,33 +348,24 @@
                 </span>
               </div>
               
-              <div class="flex items-center gap-2">
-                <button 
-                  onclick="openScannerModal()" 
-                  class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-cyan-300 hover:bg-cyan-500/20 active:scale-95 text-xs font-mono uppercase transition-all shadow-sm"
-                  title="Scan QR on PC"
-                >
-                  <i data-lucide="camera" class="w-3.5 h-3.5"></i>
-                  <span>Scan PC QR</span>
-                </button>
-                <button 
-                  onclick="exportAllCalendar()" 
-                  class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 hover:bg-emerald-500/20 active:scale-95 text-xs font-mono uppercase transition-all shadow-sm ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
-                  title="Sync directly to Apple Calendar"
-                >
-                  <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
-                  <span>Export to Calendar</span>
-                </button>
-              </div>
+              <!-- One-Click Native Apple Calendar Export Button -->
+              <button 
+                onclick="exportCalendar()" 
+                class="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 hover:bg-emerald-500/30 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-lg shadow-emerald-950/40 ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
+                title="Add shifts directly to Apple Calendar"
+              >
+                <i data-lucide="calendar-plus" class="w-4 h-4 text-emerald-400"></i>
+                <span>Export to Calendar</span>
+              </button>
             </div>
             
-            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[440px] lg:max-h-none scroll-hide">
+            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[500px] lg:max-h-none scroll-hide">
               ${shiftsHtml}
             </div>
           </div>
 
-          <!-- 2. PC Dictation Interface -->
-          <div class="col-span-1 lg:col-span-4 lg:row-span-4 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex flex-col shadow-2xl relative order-2 shrink-0">
+          <!-- 2. PC Dictation Interface (HIDDEN ON PHONE) -->
+          <div class="hidden lg:flex col-span-4 row-span-4 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex-col shadow-2xl relative shrink-0">
             <div class="absolute top-4 right-4">
               <div class="w-2 h-2 rounded-full ${state.isListening ? 'bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse' : 'bg-violet-500 shadow-[0_0_10px_#a855f7]'}"></div>
             </div>
@@ -463,14 +406,14 @@
             </div>
           </div>
 
-          <!-- 3. PC Export & QR Generation Hub -->
-          <div class="col-span-1 lg:col-span-4 lg:row-span-2 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl order-3 shrink-0">
-            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">PC Synchronization</h2>
+          <!-- 3. PC QR Code Generation Hub (HIDDEN ON PHONE) -->
+          <div class="hidden lg:flex col-span-4 row-span-2 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex-col justify-between shadow-2xl shrink-0">
+            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">Sync to Phone</h2>
             <div class="grid grid-cols-2 gap-3 mt-auto">
               <button 
                 onclick="openQrModal()"
                 class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl cursor-pointer group transition-all active:scale-95 hover:border-cyan-400/70 hover:bg-cyan-500/10 hover:shadow-[0_0_12px_rgba(34,211,238,0.3)]"
-                title="Generate QR code to scan from phone"
+                title="Display QR code for phone camera"
               >
                 <i data-lucide="qr-code" class="w-5 h-5 text-cyan-400 transition-colors"></i>
                 <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">
@@ -479,11 +422,11 @@
               </button>
 
               <button 
-                onclick="exportAllCalendar()"
+                onclick="exportCalendar()"
                 class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl hover:border-emerald-500/50 transition-all group ${state.shifts.length === 0 ? 'opacity-50 pointer-events-none' : ''}"
               >
                 <i data-lucide="download" class="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform"></i>
-                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">Download .ICS<br/>(All Shifts)</span>
+                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">Download .ICS<br/>(File)</span>
               </button>
             </div>
           </div>
@@ -610,9 +553,9 @@
               <button onclick="closeQrModal()" class="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors">
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
-              <h3 class="text-xl font-bold text-white mb-2">Sync to Phone</h3>
-              <p class="text-xs text-slate-400 text-center mb-6">Open your phone app, tap <strong>Scan PC QR</strong>, and hold your phone 12–18 inches away.</p>
-              <div class="bg-white p-3 sm:p-4 rounded-2xl mb-6 flex items-center justify-center w-full max-w-[280px]">
+              <h3 class="text-xl font-bold text-white mb-1">Scan with Phone</h3>
+              <p class="text-xs text-slate-400 text-center mb-6">Open your iPhone Camera app and point it here.</p>
+              <div class="bg-white p-4 rounded-2xl mb-6 flex items-center justify-center w-full max-w-[280px]">
                 <div id="qrcode" class="w-full flex justify-center items-center"></div>
               </div>
               <button onclick="closeQrModal()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 transition-colors">Done</button>
@@ -715,8 +658,8 @@
             new QRious({
               element: canvas,
               value: syncUrl,
-              size: 320,
-              level: 'M'
+              size: 280,
+              level: 'L'
             });
           } catch (err) {
             console.error("QR Error:", err);
@@ -762,64 +705,7 @@
       lucide.createIcons();
     }
 
-    let html5QrCode = null;
-
-    window.openScannerModal = function() {
-      const modal = document.getElementById('scanner-modal');
-      if (modal) modal.classList.remove('hidden');
-      const status = document.getElementById('scanner-status');
-      if (status) status.innerText = 'Starting camera...';
-
-      if (typeof Html5Qrcode === 'undefined') {
-        if (status) status.innerText = 'Scanner library loading error. Refresh and try again.';
-        return;
-      }
-
-      setTimeout(() => {
-        try {
-          // Native Apple BarcodeDetector enabled for iOS hardware acceleration
-          html5QrCode = new Html5Qrcode("reader", {
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
-            }
-          });
-          
-          html5QrCode.start(
-            { facingMode: "environment" },
-            { 
-              fps: 20
-              // No qrbox: scans the entire frame at comfortable arm distance
-            },
-            (decodedText) => {
-              if (navigator.vibrate) navigator.vibrate(100);
-              window.closeScannerModal();
-              handleScannedData(decodedText);
-            },
-            (err) => {}
-          ).catch(err => {
-            console.error("Camera start failure:", err);
-            if (status) status.innerText = 'Camera access denied or unavailable.';
-          });
-        } catch(e) {
-          if (status) status.innerText = 'Unable to launch camera stream.';
-        }
-      }, 100);
-    };
-
-    window.closeScannerModal = function() {
-      const modal = document.getElementById('scanner-modal');
-      if (modal) modal.classList.add('hidden');
-      if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-          html5QrCode.clear();
-          html5QrCode = null;
-        }).catch(() => {
-          html5QrCode = null;
-        });
-      }
-    };
-
-    window.exportAllCalendar = function() {
+    window.exportCalendar = function() {
       if (!state.shifts || state.shifts.length === 0) {
         alert('No shifts available to export.');
         return;
@@ -844,21 +730,15 @@
       });
       ics += 'END:VCALENDAR';
 
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-      if (isIOS) {
-        window.location.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
-      } else {
-        const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `schedule-export.ics`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-      }
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `work-schedule.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     };
 
     let recognition = null;
