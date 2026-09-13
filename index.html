@@ -107,6 +107,11 @@
       toastMsg: '',
     };
 
+    // Compact base-36 unique ID generator
+    function generateCompactId() {
+      return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    }
+
     // Centralized Storage Helper
     function persist() {
       try {
@@ -127,7 +132,7 @@
       }
     } catch(e) {}
 
-    // Multi-tab storage sync listener (prevents PC background tabs from clobbering active data)
+    // Multi-tab storage sync listener
     window.addEventListener('storage', (e) => {
       if ((e.key === 'vet_shifts_backup' || e.key === 'schedule_sync_shifts') && e.newValue) {
         try {
@@ -156,7 +161,7 @@
       return { y, m, d, h, min };
     }
 
-    // QR Import Listener with ID-based Upsert (Never Wipes or Duplicates on Re-Scan)
+    // QR Import Listener with ID-based Upsert (Preserves Edits, No Duplicates)
     const hash = window.location.hash;
     if (hash.startsWith('#sync=')) {
       try {
@@ -171,7 +176,7 @@
           const [id, dateStr, sTime, eTime, room, isUrgent] = parts;
           
           return {
-            id: id || (Date.now().toString() + Math.random().toString()),
+            id: id || generateCompactId(),
             start: dateStr + 'T' + sTime,
             end: dateStr + 'T' + eTime,
             title: isUrgent === '1' ? 'Urgent Care' : 'Regular Shift',
@@ -181,7 +186,6 @@
         }).filter(Boolean);
 
         if (restoredShifts.length > 0) {
-          // Merge by stable ID to preserve updates across scans without duplicating
           const existingMap = new Map(state.shifts.map(s => [s.id, s]));
           for (const s of restoredShifts) {
             existingMap.set(s.id, s);
@@ -307,7 +311,6 @@
       let sectionTitle = "Shift Matrix (Next 7 Days)";
       let badgeLabel = `${displayedShifts.length} UPCOMING`;
 
-      // Fail-Safe: If no shifts in rolling 7-day window, show next upcoming shifts so dashboard is never empty
       if (displayedShifts.length === 0 && allShiftsSorted.length > 0) {
         displayedShifts = allShiftsSorted.slice(0, 8);
         sectionTitle = "Upcoming Schedule Matrix";
@@ -341,7 +344,7 @@
       container.innerHTML = `
         <div class="min-h-full lg:h-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-6 gap-4 sm:gap-6 pb-24 lg:pb-0">
           
-          <!-- 1. Next 7 Days / Upcoming Matrix (Lock mobile min-height so it NEVER shrinks away) -->
+          <!-- 1. Next 7 Days / Upcoming Matrix -->
           <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[300px] shrink-0 lg:shrink order-1">
             <div class="p-4 border-b border-slate-800/50 flex justify-between items-center shrink-0">
               <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
@@ -547,14 +550,14 @@
       if (state.showQrModal) {
         html += `
           <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div class="bg-slate-900 border border-slate-700 rounded-3xl p-8 max-w-sm w-full flex flex-col items-center shadow-2xl shadow-cyan-900/20 relative">
+            <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-sm w-full flex flex-col items-center shadow-2xl shadow-cyan-900/20 relative">
               <button onclick="closeQrModal()" class="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors">
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
               <h3 class="text-xl font-bold text-white mb-2">Sync to Phone</h3>
-              <p class="text-sm text-slate-400 text-center mb-6">Scan this QR code with your iPhone camera to instantly import your entire schedule.</p>
-              <div class="bg-white p-4 rounded-2xl mb-6">
-                <div id="qrcode"></div>
+              <p class="text-xs text-slate-400 text-center mb-6">Scan this QR code with your iPhone camera to instantly import your entire schedule.</p>
+              <div class="bg-white p-3 sm:p-4 rounded-2xl mb-6 flex items-center justify-center w-full max-w-[290px]">
+                <div id="qrcode" class="w-full flex justify-center items-center"></div>
               </div>
               <button onclick="closeQrModal()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 transition-colors">Done</button>
             </div>
@@ -564,6 +567,8 @@
 
       if (state.editingShift) {
         const shift = state.editingShift;
+        const startVal = shift.start ? shift.start.slice(0, 16) : `${shift.date}T${shift.startTime}`;
+        const endVal = shift.end ? shift.end.slice(0, 16) : `${shift.date}T${shift.endTime}`;
         html += `
           <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeEditModal()"></div>
@@ -583,16 +588,16 @@
                 </div>
                 <div>
                   <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Details (Room, Location)</label>
-                  <input type="text" id="edit-details" value="${shift.details ? shift.details.replace(/"/g, '&quot;') : ''}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50">
+                  <input type="text" id="edit-details" value="${(shift.details || shift.room || '').replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50">
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                   <div>
                     <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Start Time</label>
-                    <input type="datetime-local" id="edit-start" value="${shift.start.slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                    <input type="datetime-local" id="edit-start" value="${startVal}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
                   </div>
                   <div>
                     <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">End Time</label>
-                    <input type="datetime-local" id="edit-end" value="${shift.end.slice(0, 16)}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                    <input type="datetime-local" id="edit-end" value="${endVal}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
                   </div>
                 </div>
                 <div class="mt-6 flex justify-end gap-3">
@@ -606,42 +611,72 @@
       }
       modalContainer.innerHTML = html;
 
+      // QR Code Render Block: Always re-queries the LIVE DOM node inside setTimeout
       if (state.showQrModal) {
-        const qrContainer = document.getElementById('qrcode');
-        if (qrContainer) {
-          qrContainer.innerHTML = '';
-          
-          // Safe serialization with IDs intact (prevents duplicates on edit and re-sync)
-          const compactString = state.shifts.map(s => {
-            if (!s.start || !s.end || !s.start.includes('T') || !s.end.includes('T')) return null;
-            const [datePart, startTime] = s.start.split('T');
-            const endTime = s.end.split('T')[1];
-            const isUrgent = (s.colorCode === 'red' || s.title.includes('Urgent')) ? '1' : '0';
-            const room = s.details ? s.details.replace(/[~|]/g, '-') : '';
-            const shiftId = (s.id || Date.now().toString()).replace(/[~|]/g, '_');
-            return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${isUrgent}`;
-          }).filter(Boolean).join('|');
-          
-          const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
-          
-          setTimeout(() => {
-            try {
-              if (typeof QRious === 'undefined') {
-                throw new Error("QRious library failed to load.");
-              }
-              const canvas = document.createElement('canvas');
-              qrContainer.appendChild(canvas);
-              new QRious({
-                element: canvas,
-                value: syncUrl,
-                size: 240,
-                level: 'L'
-              });
-            } catch (err) {
-              qrContainer.innerHTML = `<p style="color:red; font-size:12px;">Sync Error: ${err.message}</p>`;
+        setTimeout(() => {
+          try {
+            const container = document.getElementById('qrcode');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!state.shifts || state.shifts.length === 0) {
+              container.innerHTML = `<p class="text-xs text-slate-500 py-4 text-center">No shifts to encode.</p>`;
+              return;
             }
-          }, 50);
-        }
+
+            const compactString = state.shifts.map(s => {
+              let datePart = s.date || '';
+              let startTime = s.startTime || '';
+              let endTime = s.endTime || '';
+
+              if (s.start && s.start.includes('T')) {
+                const parts = s.start.split('T');
+                datePart = parts[0];
+                startTime = parts[1];
+              }
+              if (s.end && s.end.includes('T')) {
+                endTime = s.end.split('T')[1];
+              }
+
+              if (!datePart || !startTime || !endTime) return null;
+
+              const isUrgent = (s.colorCode === 'red' || (s.title && s.title.includes('Urgent')) || s.urgentCare) ? '1' : '0';
+              const room = (s.details || s.room || '').replace(/[~|]/g, '-');
+              const shiftId = (s.id || generateCompactId()).replace(/[~|]/g, '_');
+              return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${isUrgent}`;
+            }).filter(Boolean).join('|');
+
+            if (!compactString) {
+              container.innerHTML = `<p class="text-xs text-red-500 py-4 text-center">No valid shifts found to encode.</p>`;
+              return;
+            }
+
+            const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
+            console.log('QR Payload Size:', syncUrl.length, 'chars. Total shifts:', state.shifts.length);
+
+            if (typeof QRious === 'undefined') {
+              container.innerHTML = `<p style="color:red;font-size:12px;">QR library failed to load.</p>`;
+              return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'w-full h-auto max-w-[260px] aspect-square mx-auto block';
+            container.appendChild(canvas);
+
+            new QRious({
+              element: canvas,
+              value: syncUrl,
+              size: 320,
+              level: 'M'
+            });
+          } catch (err) {
+            console.error("QR Generation Failure:", err);
+            const container = document.getElementById('qrcode');
+            if (container) {
+              container.innerHTML = `<p style="color:red;font-size:12px;">Sync Error: ${err.message}</p>`;
+            }
+          }
+        }, 50);
       }
     }
 
@@ -717,7 +752,6 @@
           state.transcript += (state.transcript ? ' ' : '') + pendingInterimText.trim();
           pendingInterimText = '';
         }
-        // Auto-restart if user has not explicitly toggled off (mitigates Chrome/Safari silence timeouts)
         if (state.isListening) {
           try {
             recognition.start();
@@ -733,7 +767,7 @@
     window.toggleListening = function() {
       if (state.isListening) {
         state.isListening = false;
-        if (recognition) recognition.stop();
+        if (recognition) try { recognition.stop(); } catch(e) {}
       } else {
         if (recognition) {
           try {
@@ -752,7 +786,20 @@
     };
 
     window.processTranscript = function() {
-      if (state.isListening || !state.transcript.trim()) return;
+      if (state.isListening) {
+        state.isListening = false;
+        if (recognition) try { recognition.stop(); } catch(e) {}
+      }
+
+      if (pendingInterimText.trim()) {
+        state.transcript += (state.transcript ? ' ' : '') + pendingInterimText.trim();
+        pendingInterimText = '';
+      }
+
+      if (!state.transcript.trim()) {
+        alert('Please dictate or paste your schedule into the box first.');
+        return;
+      }
 
       state.isProcessing = true;
       state.statusMsg = 'Processing Neural Feed locally...';
@@ -810,36 +857,24 @@
             if (monthMatch) {
               const mStr = monthMatch[1].toLowerCase();
               const monthMap = { jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3, may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7, sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11 };
-              if (monthMap[mStr] !== undefined) {
-                currentMonth = monthMap[mStr];
-              }
+              if (monthMap[mStr] !== undefined) currentMonth = monthMap[mStr];
             } else {
                const numMatch = chunk.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
-               if (numMatch) {
-                   currentMonth = parseInt(numMatch[1]) - 1;
-               }
+               if (numMatch) currentMonth = parseInt(numMatch[1]) - 1;
             }
 
             const numMatch = chunk.match(/\b\d{1,2}[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?\b/);
             const ordinalMatch = chunk.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
             const plainDayMatch = chunk.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\b/i);
 
-            if (numMatch) {
-              day = parseInt(numMatch[1]);
-            } else if (ordinalMatch) {
-              day = parseInt(ordinalMatch[1]);
-            } else if (plainDayMatch) {
-              day = parseInt(plainDayMatch[1]);
-            }
+            if (numMatch) day = parseInt(numMatch[1]);
+            else if (ordinalMatch) day = parseInt(ordinalMatch[1]);
+            else if (plainDayMatch) day = parseInt(plainDayMatch[1]);
 
             const timeMatch = chunk.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/i);
 
             if (!timeMatch) {
-              // Surface skipped chunks that had text/dates but missed a time range
-              if (day !== null || chunk.length > 8) {
-                console.warn("Skipped chunk (missing time range):", chunk);
-                skippedCount++;
-              }
+              if (day !== null || chunk.length > 8) skippedCount++;
               return;
             }
             
@@ -858,7 +893,6 @@
               return;
             }
 
-            // Overnight / Night Shift keyword detection
             const isNightShift = /\b(?:night|overnight|graveyard)\b/i.test(chunk);
 
             if (isNightShift) {
@@ -885,10 +919,7 @@
             let endMonth = currentMonth;
             let endDay = day;
 
-            const startTotalMinutes = startH * 60 + startM;
-            const endTotalMinutes = endH * 60 + endM;
-
-            if (endTotalMinutes < startTotalMinutes) {
+            if ((endH * 60 + endM) < (startH * 60 + startM)) {
               const nextDayDate = new Date(currentYear, currentMonth, day + 1);
               endYear = nextDayDate.getFullYear();
               endMonth = nextDayDate.getMonth();
@@ -923,16 +954,24 @@
             }
 
             const pad = n => n.toString().padStart(2, '0');
-            let startIso = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}T${pad(startH)}:${pad(startM)}`;
-            let endIso = `${endYear}-${pad(endMonth + 1)}-${pad(endDay)}T${pad(endH)}:${pad(endM)}`;
+            const dateStr = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}`;
+            const sTimeStr = `${pad(startH)}:${pad(startM)}`;
+            const eTimeStr = `${pad(endH)}:${pad(endM)}`;
+            const startIso = `${dateStr}T${sTimeStr}`;
+            const endIso = `${endYear}-${pad(endMonth + 1)}-${pad(endDay)}T${eTimeStr}`;
 
             state.shifts.push({
-              id: Date.now().toString() + Math.random().toString(),
+              id: generateCompactId(),
               title: title,
               details: details,
               colorCode: colorCode,
               start: startIso,
-              end: endIso
+              end: endIso,
+              date: dateStr,
+              startTime: sTimeStr,
+              endTime: eTimeStr,
+              room: details,
+              urgentCare: colorCode === 'red'
             });
             newShiftsCount++;
           });
@@ -942,9 +981,7 @@
           state.statusMsg = '';
           
           let toast = `Successfully added ${newShiftsCount} shift${newShiftsCount === 1 ? '' : 's'}.`;
-          if (skippedCount > 0) {
-            toast += ` (${skippedCount} skipped: missing hours)`;
-          }
+          if (skippedCount > 0) toast += ` (${skippedCount} skipped: missing hours)`;
           state.toastMsg = toast;
           
           persist();
@@ -959,13 +996,17 @@
           console.error("Critical parse error:", err);
           state.isProcessing = false;
           state.statusMsg = '';
-          state.toastMsg = 'Error processing schedule feed. Please try again.';
+          state.toastMsg = 'Error processing schedule feed.';
           render();
         }
-      }, 800);
+      }, 400);
     };
 
     window.openQrModal = function() {
+      if (!state.shifts || state.shifts.length === 0) {
+        alert('No shifts found in your schedule. Please enter shifts before syncing.');
+        return;
+      }
       state.showQrModal = true;
       render();
     };
@@ -998,7 +1039,6 @@
       const sVal = document.getElementById('edit-start').value;
       const eVal = document.getElementById('edit-end').value;
 
-      // Edit validation guard
       if (new Date(eVal) <= new Date(sVal)) {
         alert('End time must be after start time.');
         return;
