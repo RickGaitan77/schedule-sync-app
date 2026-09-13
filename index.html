@@ -10,6 +10,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
     @keyframes pulse-shadow-red {
@@ -89,6 +90,25 @@
   </div>
 
   <div id="modal-container"></div>
+  <div id="scanner-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full flex flex-col items-center shadow-2xl relative">
+      <button onclick="closeScannerModal()" class="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+      <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+        <i data-lucide="scan-line" class="w-5 h-5 text-cyan-400"></i> Scan PC Screen
+      </h3>
+      <p class="text-xs text-slate-400 text-center mb-4">Point your camera at the QR code on your computer screen.</p>
+      
+      <div id="reader" class="w-full rounded-2xl overflow-hidden bg-black aspect-square border border-slate-700 relative"></div>
+      
+      <div id="scanner-status" class="mt-3 text-xs font-mono text-cyan-400 text-center">Starting camera...</div>
+      
+      <button onclick="closeScannerModal()" class="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-medium transition-colors">
+        Cancel
+      </button>
+    </div>
+  </div>
   <div id="toast-container"></div>
 
   <script>
@@ -107,23 +127,20 @@
       toastMsg: '',
     };
 
-    // Compact base-36 unique ID generator
     function generateCompactId() {
       return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
     }
 
-    // Centralized Storage Helper
     function persist() {
       try {
         const payload = JSON.stringify(state.shifts);
         localStorage.setItem('vet_shifts_backup', payload);
         localStorage.setItem('schedule_sync_shifts', payload);
       } catch (err) {
-        console.error('Storage persistence failed (storage quota or private mode):', err);
+        console.error('Storage persistence failed:', err);
       }
     }
 
-    // Load initial shifts from storage
     try {
       const saved = localStorage.getItem('vet_shifts_backup') || localStorage.getItem('schedule_sync_shifts');
       if (saved) {
@@ -132,7 +149,6 @@
       }
     } catch(e) {}
 
-    // Multi-tab storage sync listener
     window.addEventListener('storage', (e) => {
       if ((e.key === 'vet_shifts_backup' || e.key === 'schedule_sync_shifts') && e.newValue) {
         try {
@@ -141,13 +157,10 @@
             state.shifts = updated;
             render();
           }
-        } catch (err) {
-          console.error('Multi-tab sync error:', err);
-        }
+        } catch (err) {}
       }
     });
 
-    // Pure string date extractor (avoids UTC timezone shifts)
     function parseDateParts(isoStr) {
       if (!isoStr) return { y: 2026, m: 1, d: 1, h: 0, min: 0 };
       const [datePart, timePart] = isoStr.replace('Z', '').split('T');
@@ -161,45 +174,53 @@
       return { y, m, d, h, min };
     }
 
-    // QR Import Listener with ID-based Upsert (Preserves Edits, No Duplicates)
-    const hash = window.location.hash;
-    if (hash.startsWith('#sync=')) {
+    function handleScannedData(rawString) {
       try {
-        const encodedData = hash.substring(6);
-        const decodedData = decodeURIComponent(encodedData);
-        const shiftStrings = decodedData.split('|');
-        
-        const restoredShifts = shiftStrings.map(str => {
+        let encoded = rawString;
+        if (rawString.includes('#sync=')) {
+          encoded = rawString.split('#sync=')[1];
+        }
+        const decoded = decodeURIComponent(encoded);
+        const shiftStrings = decoded.split('|');
+
+        const restored = shiftStrings.map(str => {
           if (!str) return null;
           const parts = str.split('~');
           if (parts.length < 6) return null;
           const [id, dateStr, sTime, eTime, room, isUrgent] = parts;
-          
           return {
             id: id || generateCompactId(),
             start: dateStr + 'T' + sTime,
             end: dateStr + 'T' + eTime,
             title: isUrgent === '1' ? 'Urgent Care' : 'Regular Shift',
             details: room || '',
-            colorCode: isUrgent === '1' ? 'red' : 'blue'
+            colorCode: isUrgent === '1' ? 'red' : 'blue',
+            date: dateStr,
+            startTime: sTime,
+            endTime: eTime,
+            room: room || '',
+            urgentCare: isUrgent === '1'
           };
         }).filter(Boolean);
 
-        if (restoredShifts.length > 0) {
-          const existingMap = new Map(state.shifts.map(s => [s.id, s]));
-          for (const s of restoredShifts) {
-            existingMap.set(s.id, s);
-          }
-          state.shifts = [...existingMap.values()];
+        if (restored.length > 0) {
+          const map = new Map(state.shifts.map(s => [s.id, s]));
+          for (const s of restored) map.set(s.id, s);
+          state.shifts = [...map.values()];
           persist();
+          state.toastMsg = `Successfully synced ${restored.length} shifts to app!`;
         }
-        
-        window.history.replaceState(null, '', window.location.pathname);
-        state.toastMsg = 'Shifts successfully merged and synced!';
-        setTimeout(() => { state.toastMsg = ''; render(); }, 3000);
+        render();
+        setTimeout(() => { state.toastMsg = ''; render(); }, 4000);
       } catch (e) {
-        console.error('Failed to parse synced shifts:', e);
+        alert('Failed to parse schedule QR code: ' + e.message);
       }
+    }
+
+    const hash = window.location.hash;
+    if (hash.startsWith('#sync=')) {
+      handleScannedData(window.location.href);
+      window.history.replaceState(null, '', window.location.pathname);
     }
 
     function formatTime(rawStr) {
@@ -322,7 +343,7 @@
         shiftsHtml = `
           <div class="min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-10">
             <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
-            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Dictate above to begin.</p>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Tap "Scan PC QR" above or dictate.</p>
           </div>
         `;
       } else {
@@ -335,37 +356,53 @@
       }
 
       const currentMonthName = new Date(0, parseInt(state.month) - 1).toLocaleString('default', { month: 'long' });
-      const monthWorkingShifts = state.shifts.filter(s => {
-        const p = parseDateParts(s.start);
-        return p.m.toString() === state.month && p.y.toString() === state.year;
-      });
-      const exportDisabled = monthWorkingShifts.length === 0 ? 'disabled' : '';
 
       container.innerHTML = `
         <div class="min-h-full lg:h-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-6 gap-4 sm:gap-6 pb-24 lg:pb-0">
           
-          <!-- 1. Next 7 Days / Upcoming Matrix -->
-          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[300px] shrink-0 lg:shrink order-1">
-            <div class="p-4 border-b border-slate-800/50 flex justify-between items-center shrink-0">
-              <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
-              <div class="flex gap-2">
-                <span class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+          <!-- 1. Primary Shift Matrix with Direct Header Actions -->
+          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[340px] shrink-0 lg:shrink order-1">
+            <div class="p-3 sm:p-4 border-b border-slate-800/50 flex flex-wrap justify-between items-center gap-2 shrink-0">
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
                   ${badgeLabel}
                 </span>
               </div>
+              
+              <!-- One-Click In-App Phone Action Controls -->
+              <div class="flex items-center gap-2">
+                <button 
+                  onclick="openScannerModal()" 
+                  class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-cyan-300 hover:bg-cyan-500/20 active:scale-95 text-xs font-mono uppercase transition-all shadow-sm"
+                  title="Scan QR on PC"
+                >
+                  <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+                  <span>Scan PC QR</span>
+                </button>
+                <button 
+                  onclick="exportAllCalendar()" 
+                  class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 hover:bg-emerald-500/20 active:scale-95 text-xs font-mono uppercase transition-all shadow-sm ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
+                  title="Sync directly to Apple Calendar"
+                >
+                  <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+                  <span>Export to Calendar</span>
+                </button>
+              </div>
             </div>
-            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[420px] lg:max-h-none scroll-hide">
+            
+            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[440px] lg:max-h-none scroll-hide">
               ${shiftsHtml}
             </div>
           </div>
 
-          <!-- 2. Input Interface -->
+          <!-- 2. PC Input Interface -->
           <div class="col-span-1 lg:col-span-4 lg:row-span-4 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex flex-col shadow-2xl relative order-2 shrink-0">
             <div class="absolute top-4 right-4">
               <div class="w-2 h-2 rounded-full ${state.isListening ? 'bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse' : 'bg-violet-500 shadow-[0_0_10px_#a855f7]'}"></div>
             </div>
-            <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400 mb-4 shrink-0">Input Interface</h2>
-            <div class="flex-1 flex flex-col gap-4 min-h-[200px]">
+            <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400 mb-4 shrink-0">PC Dictation Interface</h2>
+            <div class="flex-1 flex flex-col gap-4 min-h-[190px]">
               <div class="relative group flex-1 flex flex-col">
                 <textarea
                   id="transcript-input"
@@ -384,48 +421,44 @@
               <button
                 onclick="processTranscript()"
                 ${state.isProcessing ? 'disabled' : ''}
-                class="w-full py-4 bg-gradient-to-r from-violet-600 to-emerald-600 rounded-2xl text-white font-bold uppercase tracking-widest text-xs shadow-lg shadow-violet-900/20 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+                class="w-full py-3.5 bg-gradient-to-r from-violet-600 to-emerald-600 rounded-2xl text-white font-bold uppercase tracking-widest text-xs shadow-lg shadow-violet-900/20 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
               >
                 ${state.isProcessing ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Processing Neural Feed' : 'Process Neural Feed'}
               </button>
               ${state.statusMsg ? `<div class="mt-2 text-center text-xs font-mono text-emerald-400 p-2 bg-slate-900/50 rounded border border-emerald-500/20">${state.statusMsg}</div>` : ''}
             </div>
-            <div class="mt-6 pt-6 border-t border-slate-800/50 shrink-0">
-              <div class="flex items-center justify-center gap-1.5 h-6 mb-3">
+            <div class="mt-4 pt-4 border-t border-slate-800/50 shrink-0">
+              <div class="flex items-center justify-center gap-1.5 h-6 mb-2">
                 ${waveHtml}
               </div>
               <div class="flex justify-between items-center text-[10px] font-mono text-slate-500 uppercase">
                 <span>Memory Buffer</span>
                 <span>${(state.transcript.length / 1024).toFixed(3)} KB</span>
               </div>
-              <div class="w-full h-1 bg-slate-800 rounded-full mt-2 overflow-hidden">
-                <div class="h-full bg-emerald-500 transition-all duration-300" style="width: ${Math.min(100, (state.transcript.length / 5000) * 100)}%"></div>
-              </div>
             </div>
           </div>
 
-          <!-- 3. Export Protocol -->
+          <!-- 3. PC Export & QR Generation Hub -->
           <div class="col-span-1 lg:col-span-4 lg:row-span-2 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl order-3 shrink-0">
-            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-4">Export Protocol</h2>
-            <div class="grid grid-cols-2 gap-4 mt-auto">
-              <button 
-                onclick="exportCalendar()"
-                ${exportDisabled}
-                class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl hover:border-emerald-500/50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <i data-lucide="download" class="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform"></i>
-                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">Export ${currentMonthName} Shifts<br/>(.ics)</span>
-              </button>
-              
+            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">PC Synchronization</h2>
+            <div class="grid grid-cols-2 gap-3 mt-auto">
               <button 
                 onclick="openQrModal()"
-                class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl cursor-pointer group transition-all duration-150 active:scale-95 hover:border-cyan-400/70 hover:bg-cyan-500/10 hover:shadow-[0_0_12px_rgba(34,211,238,0.3)]"
-                title="Sync to Phone"
+                class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl cursor-pointer group transition-all active:scale-95 hover:border-cyan-400/70 hover:bg-cyan-500/10 hover:shadow-[0_0_12px_rgba(34,211,238,0.3)]"
+                title="Generate QR code to scan from phone"
               >
-                <i data-lucide="smartphone" class="w-5 h-5 text-violet-400 transition-colors group-hover:text-cyan-300"></i>
-                <span class="text-[10px] font-mono uppercase text-slate-300 transition-colors group-hover:text-cyan-300 text-center leading-tight">
-                  Sync to Phone<br/>(QR Code)
+                <i data-lucide="qr-code" class="w-5 h-5 text-cyan-400 transition-colors"></i>
+                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">
+                  Display QR Code<br/>(For Phone)
                 </span>
+              </button>
+
+              <button 
+                onclick="exportAllCalendar()"
+                class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl hover:border-emerald-500/50 transition-all group ${state.shifts.length === 0 ? 'opacity-50 pointer-events-none' : ''}"
+              >
+                <i data-lucide="download" class="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform"></i>
+                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">Download .ICS<br/>(All Shifts)</span>
               </button>
             </div>
           </div>
@@ -439,8 +472,6 @@
           const kb = (state.transcript.length / 1024).toFixed(3);
           const spans = document.querySelectorAll('.text-\\[10px\\].font-mono.text-slate-500.uppercase span');
           if (spans.length > 1) spans[1].innerText = kb + ' KB';
-          const progress = document.querySelector('.bg-emerald-500.transition-all');
-          if (progress) progress.style.width = Math.min(100, (state.transcript.length / 5000) * 100) + '%';
         });
       }
     }
@@ -555,8 +586,8 @@
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
               <h3 class="text-xl font-bold text-white mb-2">Sync to Phone</h3>
-              <p class="text-xs text-slate-400 text-center mb-6">Scan this QR code with your iPhone camera to instantly import your entire schedule.</p>
-              <div class="bg-white p-3 sm:p-4 rounded-2xl mb-6 flex items-center justify-center w-full max-w-[290px]">
+              <p class="text-xs text-slate-400 text-center mb-6">Open your phone app, tap <strong>Scan PC QR</strong>, and point the camera here.</p>
+              <div class="bg-white p-3 sm:p-4 rounded-2xl mb-6 flex items-center justify-center w-full max-w-[280px]">
                 <div id="qrcode" class="w-full flex justify-center items-center"></div>
               </div>
               <button onclick="closeQrModal()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 transition-colors">Done</button>
@@ -611,7 +642,6 @@
       }
       modalContainer.innerHTML = html;
 
-      // QR Code Render Block: Always re-queries the LIVE DOM node inside setTimeout
       if (state.showQrModal) {
         setTimeout(() => {
           try {
@@ -646,13 +676,7 @@
               return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${isUrgent}`;
             }).filter(Boolean).join('|');
 
-            if (!compactString) {
-              container.innerHTML = `<p class="text-xs text-red-500 py-4 text-center">No valid shifts found to encode.</p>`;
-              return;
-            }
-
             const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
-            console.log('QR Payload Size:', syncUrl.length, 'chars. Total shifts:', state.shifts.length);
 
             if (typeof QRious === 'undefined') {
               container.innerHTML = `<p style="color:red;font-size:12px;">QR library failed to load.</p>`;
@@ -660,7 +684,7 @@
             }
 
             const canvas = document.createElement('canvas');
-            canvas.className = 'w-full h-auto max-w-[260px] aspect-square mx-auto block';
+            canvas.className = 'w-full h-auto max-w-[250px] aspect-square mx-auto block';
             container.appendChild(canvas);
 
             new QRious({
@@ -670,11 +694,7 @@
               level: 'M'
             });
           } catch (err) {
-            console.error("QR Generation Failure:", err);
-            const container = document.getElementById('qrcode');
-            if (container) {
-              container.innerHTML = `<p style="color:red;font-size:12px;">Sync Error: ${err.message}</p>`;
-            }
+            console.error("QR Error:", err);
           }
         }, 50);
       }
@@ -717,7 +737,94 @@
       lucide.createIcons();
     }
 
-    // Speech Recognition with Keep-Alive and Buffer Flush
+    let html5QrCode = null;
+
+    window.openScannerModal = function() {
+      const modal = document.getElementById('scanner-modal');
+      if (modal) modal.classList.remove('hidden');
+      const status = document.getElementById('scanner-status');
+      if (status) status.innerText = 'Starting camera...';
+
+      if (typeof Html5Qrcode === 'undefined') {
+        if (status) status.innerText = 'Scanner library loading error. Refresh and try again.';
+        return;
+      }
+
+      setTimeout(() => {
+        try {
+          html5QrCode = new Html5Qrcode("reader");
+          html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 15, qrbox: { width: 220, height: 220 } },
+            (decodedText) => {
+              window.closeScannerModal();
+              handleScannedData(decodedText);
+            },
+            (err) => {}
+          ).catch(err => {
+            if (status) status.innerText = 'Camera access denied or unavailable.';
+          });
+        } catch(e) {
+          if (status) status.innerText = 'Unable to launch camera stream.';
+        }
+      }, 100);
+    };
+
+    window.closeScannerModal = function() {
+      const modal = document.getElementById('scanner-modal');
+      if (modal) modal.classList.add('hidden');
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+          html5QrCode.clear();
+          html5QrCode = null;
+        }).catch(() => {
+          html5QrCode = null;
+        });
+      }
+    };
+
+    window.exportAllCalendar = function() {
+      if (!state.shifts || state.shifts.length === 0) {
+        alert('No shifts available to export.');
+        return;
+      }
+
+      const nowUtc = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScheduleSync//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
+      
+      state.shifts.forEach(shift => {
+        const start = shift.start.replace(/[-:]/g, '') + '00';
+        const end = shift.end.replace(/[-:]/g, '') + '00';
+        
+        ics += 'BEGIN:VEVENT\r\n';
+        ics += `UID:${shift.id}@schedulesync\r\n`;
+        ics += `DTSTAMP:${nowUtc}\r\n`;
+        ics += `DTSTART:${start}\r\n`;
+        ics += `DTEND:${end}\r\n`;
+        ics += `SUMMARY:${shift.title}\r\n`;
+        ics += `DESCRIPTION:${shift.details || ''}\r\n`;
+        ics += 'STATUS:CONFIRMED\r\n';
+        ics += 'END:VEVENT\r\n';
+      });
+      ics += 'END:VCALENDAR';
+
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+      if (isIOS) {
+        window.location.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+      } else {
+        const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `schedule-export.ics`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      }
+    };
+
     let recognition = null;
     let pendingInterimText = '';
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -740,7 +847,6 @@
       };
 
       recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
         if (event.error !== 'no-speech') {
           state.isListening = false;
           render();
@@ -775,7 +881,6 @@
             state.isListening = true;
             recognition.start();
           } catch(e) {
-            console.error(e);
             state.isListening = false;
           }
         } else {
@@ -813,7 +918,6 @@
           text = text.replace(/\btill\b/g, '-');
           text = text.replace(/\buntil\b/g, '-');
           text = text.replace(/\bthru\b/g, '-');
-          
           text = text.replace(/\b(?:room|rm|no|number)\s+for\b/g, 'room 4');
           text = text.replace(/\bwon\b/g, '1');
           text = text.replace(/\bone\b/g, '1');
@@ -993,7 +1097,6 @@
           }, 4500);
 
         } catch(err) {
-          console.error("Critical parse error:", err);
           state.isProcessing = false;
           state.statusMsg = '';
           state.toastMsg = 'Error processing schedule feed.';
@@ -1056,48 +1159,7 @@
       render();
     };
 
-    window.exportCalendar = function() {
-      const shiftsToExport = state.shifts.filter(s => {
-        const p = parseDateParts(s.start);
-        return p.m.toString() === state.month && p.y.toString() === state.year;
-      });
-
-      if (shiftsToExport.length === 0) {
-        alert('No shifts to export for this month.');
-        return;
-      }
-      
-      const nowUtc = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-      let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScheduleSync//EN\r\nCALSCALE:GREGORIAN\r\n';
-      
-      shiftsToExport.forEach(shift => {
-        const start = shift.start.replace(/[-:]/g, '') + '00';
-        const end = shift.end.replace(/[-:]/g, '') + '00';
-        
-        ics += 'BEGIN:VEVENT\r\n';
-        ics += `UID:${shift.id}@schedulesync\r\n`;
-        ics += `DTSTAMP:${nowUtc}\r\n`;
-        ics += `DTSTART:${start}\r\n`;
-        ics += `DTEND:${end}\r\n`;
-        ics += `SUMMARY:${shift.title}\r\n`;
-        ics += `DESCRIPTION:${shift.details}\r\n`;
-        ics += 'END:VEVENT\r\n';
-      });
-      ics += 'END:VCALENDAR';
-      
-      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const currentMonthName = new Date(0, parseInt(state.month) - 1).toLocaleString('default', { month: 'long' });
-      a.download = `shifts-${currentMonthName.toLowerCase()}-${state.year}.ics`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    };
-
-    // Initialize application
+    // Initialize
     render();
   </script>
 </body>
