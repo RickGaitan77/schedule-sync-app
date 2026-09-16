@@ -3,1371 +3,1254 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Pantry Chef">
-  <title>Pantry Chef</title>
+  <title>Schedule Sync</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 
   <style>
-    :root {
-      --bg: #0b0f17;
-      --card-bg: rgba(18, 24, 38, 0.78);
-      --border-dim: rgba(255, 255, 255, 0.08);
-      --cobalt: #2563eb;
-      --cobalt-glow: rgba(37, 99, 235, 0.45);
-      --emerald: #10b981;
-      --emerald-glow: rgba(16, 185, 129, 0.45);
-      --amber: #f59e0b;
-      --amber-glow: rgba(245, 158, 11, 0.45);
-      --ruby: #e11d48;
-      --ruby-glow: rgba(225, 29, 72, 0.45);
+    @keyframes pulse-shadow-red {
+      0%, 100% {
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+        border-color: rgba(239, 68, 68, 0.6);
+      }
+      50% {
+        box-shadow: 0 0 24px rgba(239, 68, 68, 1), inset 0 0 8px rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 1);
+      }
     }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      -webkit-tap-highlight-color: transparent;
+    .animate-pulse-shadow-urgent {
+      animation: pulse-shadow-red 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
-
-    input, textarea, button {
-      font-size: 16px !important;
-    }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      background-color: var(--bg);
-      color: #f8fafc;
-      overflow: hidden;
-      position: fixed;
-      inset: 0;
-    }
-
-    .ambient-glow {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      overflow: hidden;
-    }
-    .orb-1 {
-      position: absolute;
-      width: 280px;
-      height: 280px;
-      top: -40px;
-      left: -40px;
-      background: radial-gradient(circle, var(--cobalt-glow) 0%, transparent 70%);
-      filter: blur(50px);
-      animation: float 14s ease-in-out infinite alternate;
-    }
-    .orb-2 {
-      position: absolute;
-      width: 320px;
-      height: 320px;
-      bottom: 80px;
-      right: -60px;
-      background: radial-gradient(circle, var(--emerald-glow) 0%, transparent 70%);
-      filter: blur(60px);
-      animation: float 18s ease-in-out infinite alternate-reverse;
-    }
-    @keyframes float {
-      0% { transform: translate(0, 0); }
-      100% { transform: translate(25px, 35px); }
-    }
-
-    #app-container {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      padding-top: max(16px, env(safe-area-inset-top));
-      padding-bottom: max(72px, calc(env(safe-area-inset-bottom) + 64px));
-    }
-
-    header {
-      padding: 10px 16px 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .brand-group {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .neon-title {
-      font-size: 1.35rem;
-      font-weight: 900;
-      letter-spacing: 0.5px;
-      color: #ffffff;
-      text-shadow: 
-        0 0 4px #fff,
-        0 0 10px #2563eb,
-        0 0 20px #2563eb,
-        0 0 35px #1d4ed8;
-      animation: neonFlicker 7s infinite ease-in-out;
-    }
-    @keyframes neonFlicker {
-      0%, 100% { opacity: 1; text-shadow: 0 0 4px #fff, 0 0 10px #2563eb, 0 0 20px #2563eb, 0 0 35px #1d4ed8; }
-      42% { opacity: 0.88; text-shadow: 0 0 2px #fff, 0 0 6px #2563eb; }
-      43% { opacity: 1; text-shadow: 0 0 4px #fff, 0 0 10px #2563eb, 0 0 20px #2563eb, 0 0 35px #1d4ed8; }
-      71% { opacity: 0.65; text-shadow: none; }
-      72% { opacity: 1; text-shadow: 0 0 4px #fff, 0 0 10px #2563eb, 0 0 20px #2563eb, 0 0 35px #1d4ed8; }
-    }
-
-    .daily-ticker-box {
-      overflow: hidden;
-      height: 24px;
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      background: rgba(16, 185, 129, 0.08);
-      border-radius: 999px;
-      padding: 0 10px;
-      display: flex;
-      align-items: center;
-    }
-    .ticker-text {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #a7f3d0;
-      white-space: nowrap;
-      animation: slotMachineIn 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-    @keyframes slotMachineIn {
-      0% { transform: translateY(100%); filter: blur(4px); opacity: 0; }
-      100% { transform: translateY(0); filter: blur(0); opacity: 1; }
-    }
-
-    .icon-btn {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-dim);
-      color: #94a3b8;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .icon-btn:active {
-      transform: scale(0.92);
-      border-color: var(--cobalt);
-      color: #fff;
-    }
-
-    main {
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 8px 16px 20px;
-    }
-    .tab-content {
+    .scroll-hide::-webkit-scrollbar {
       display: none;
-      flex-direction: column;
-      gap: 14px;
     }
-    .tab-content.active {
-      display: flex;
+    .scroll-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
     }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    @keyframes audio-wave {
+      0%, 100% { height: 6px; opacity: 0.6; }
+      50% { height: 24px; opacity: 1; }
+    }
+    .wave-active {
+      animation: audio-wave 1s infinite ease-in-out;
+    }
+    .wave-delay-0 { animation-delay: 0.0s; }
+    .wave-delay-1 { animation-delay: 0.2s; }
+    .wave-delay-2 { animation-delay: 0.4s; }
+    .wave-delay-3 { animation-delay: 0.1s; }
+    .wave-delay-4 { animation-delay: 0.3s; }
 
-    .card {
-      background: var(--card-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border-dim);
-      border-radius: 18px;
-      padding: 16px;
-      transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
-    }
-    .card:active {
-      transform: scale(0.985);
-    }
-
-    .inventory-banner {
-      border: 1px solid rgba(37, 99, 235, 0.25);
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(18, 24, 38, 0.85));
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-    }
-    .inventory-banner:active {
-      border-color: var(--cobalt);
-      box-shadow: 0 0 18px var(--cobalt-glow);
-    }
-
-    .action-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .action-card {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      min-height: 120px;
-      cursor: pointer;
-    }
-    .quick-meal-card {
-      border-color: rgba(37, 99, 235, 0.3);
-    }
-    .quick-meal-card:active {
-      border-color: var(--cobalt);
-      box-shadow: 0 0 16px var(--cobalt-glow);
-    }
-    .surprise-card {
-      border-color: rgba(245, 158, 11, 0.3);
-    }
-    .surprise-card:active {
-      border-color: var(--amber);
-      box-shadow: 0 0 16px var(--amber-glow);
-    }
-
-    .amber-bolt {
-      color: #f59e0b;
-      filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.75));
-    }
-
-    .squares-bar {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-    }
-    .square-card {
-      aspect-ratio: 1 / 1;
-      padding: 10px 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      cursor: pointer;
-      gap: 5px;
-    }
-    .sq-useit {
-      border-color: rgba(225, 29, 72, 0.35);
-    }
-    .sq-useit:active {
-      border-color: var(--ruby);
-      box-shadow: 0 0 14px var(--ruby-glow);
-      transform: scale(0.96);
-    }
-    .sq-speed {
-      border-color: rgba(37, 99, 235, 0.35);
-    }
-    .sq-speed:active {
-      border-color: var(--cobalt);
-      box-shadow: 0 0 14px var(--cobalt-glow);
-      transform: scale(0.96);
-    }
-    .sq-chef {
-      border-color: rgba(245, 158, 11, 0.35);
-    }
-    .sq-chef:active {
-      border-color: var(--amber);
-      box-shadow: 0 0 14px var(--amber-glow);
-      transform: scale(0.96);
-    }
-
-    .pantry-input-row {
-      display: flex;
-      gap: 8px;
-    }
-    .pantry-input {
-      flex: 1;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-dim);
-      border-radius: 12px;
-      padding: 12px 14px;
-      color: #fff;
-      outline: none;
-    }
-    .pantry-input:focus {
-      border-color: var(--emerald);
-    }
-    .btn-add-item {
-      background: var(--emerald);
-      color: #042f2e;
-      font-weight: 700;
-      border: none;
-      border-radius: 12px;
-      padding: 0 18px;
-      cursor: pointer;
-    }
-    .btn-add-item:active {
-      transform: scale(0.95);
-      filter: brightness(1.15);
-    }
-
-    .category-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .category-title {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #94a3b8;
-      font-weight: 700;
-    }
-    .chip-cloud {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .chip {
-      background: rgba(16, 185, 129, 0.1);
-      border: 1px solid rgba(16, 185, 129, 0.28);
-      color: #d1fae5;
-      padding: 7px 12px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-    }
-    .chip.expiring {
-      border-color: var(--ruby) !important;
-      background: rgba(225, 29, 72, 0.2) !important;
-      color: #fecdd3 !important;
-      box-shadow: 0 0 10px var(--ruby-glow);
-    }
-    .chip-del {
-      font-size: 1.1rem;
-      line-height: 1;
-      opacity: 0.6;
-    }
-    .chip-del:hover {
-      opacity: 1;
-    }
-
-    nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: calc(56px + env(safe-area-inset-bottom));
-      padding-bottom: env(safe-area-inset-bottom);
-      background: rgba(11, 15, 23, 0.9);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-top: 1px solid var(--border-dim);
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      z-index: 100;
-    }
-    .nav-btn {
-      background: none;
-      border: none;
-      color: #64748b;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 3px;
-      cursor: pointer;
-      font-size: 0.68rem;
-      font-weight: 600;
-      transition: all 0.15s ease;
-    }
-    .nav-btn:active {
-      transform: scale(0.92);
-    }
-    .nav-btn.active#nav-home { color: #60a5fa; }
-    .nav-btn.active#nav-pantry { color: #34d399; }
-    .nav-btn.active#nav-suggestions { color: #fbbf24; }
-    .nav-btn.active#nav-favorites { color: #fb7185; }
-
-    .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(11, 15, 23, 0.95);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      z-index: 200;
-      display: none;
-      flex-direction: column;
-      padding: max(20px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
-      overflow-y: auto;
-    }
-    .overlay.active {
-      display: flex;
-    }
-    .overlay-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-    .btn-primary {
-      background: var(--emerald);
-      color: #022c22;
-      border: none;
-      font-weight: 700;
-      border-radius: 14px;
-      padding: 14px;
-      cursor: pointer;
-      width: 100%;
-    }
-    .btn-primary:active {
-      transform: scale(0.98);
-      filter: brightness(1.1);
-    }
-
-    .recipe-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-dim);
-      border-radius: 16px;
-      padding: 16px;
-      margin-bottom: 12px;
-      cursor: pointer;
-    }
-    .recipe-card.expanded .recipe-details {
-      display: block;
-    }
-    .recipe-details {
-      display: none;
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid var(--border-dim);
-      font-size: 0.85rem;
-      line-height: 1.5;
-      user-select: text;
-    }
-    .portion-toggle {
-      display: flex;
-      background: rgba(255,255,255,0.05);
-      border-radius: 10px;
-      padding: 3px;
-      gap: 4px;
-      margin-bottom: 14px;
-    }
-    .portion-btn {
-      flex: 1;
-      padding: 8px;
-      border: none;
-      background: none;
-      color: #94a3b8;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 0.78rem;
-      cursor: pointer;
-    }
-    .portion-btn.active {
-      background: var(--emerald);
-      color: #022c22;
-    }
-
-    .toast {
-      position: fixed;
-      bottom: calc(75px + env(safe-area-inset-bottom));
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      opacity: 0;
-      visibility: hidden;
-      background: rgba(16, 185, 129, 0.95);
-      color: #022c22;
-      padding: 10px 18px;
-      border-radius: 20px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
-      z-index: 300;
-      pointer-events: none;
-      max-width: 85%;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .toast.show {
-      transform: translateX(-50%) translateY(0);
-      opacity: 1;
-      visibility: visible;
+    .notch-safe-header {
+      padding-top: max(1rem, env(safe-area-inset-top, 16px)) !important;
     }
   </style>
 </head>
-<body>
-
-  <div class="ambient-glow">
-    <div class="orb-1"></div>
-    <div class="orb-2"></div>
-  </div>
-
-  <div id="toast" class="toast">Saved to Favorites</div>
-
-  <div id="app-container">
-    <header>
-      <div class="brand-group">
-        <span class="neon-title">PANTRY CHEF</span>
-        <div class="daily-ticker-box">
-          <span class="ticker-text" id="daily-ticker">Chef mode: activated.</span>
+<body class="min-h-screen bg-[#020617] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#020617] to-black text-slate-200 font-sans selection:bg-emerald-500/30 overflow-x-hidden overflow-y-auto lg:overflow-hidden">
+  
+  <div id="app" class="max-w-6xl mx-auto flex flex-col min-h-screen lg:h-screen lg:max-h-screen">
+    <header class="flex items-center justify-between p-4 sm:p-6 shrink-0 border-b border-slate-800/50 notch-safe-header">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <i data-lucide="calendar-sync" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">Schedule Sync</h1>
+          <p class="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Active Link</p>
         </div>
       </div>
-      <button class="icon-btn" onclick="openModal('settings-modal')" aria-label="About">ℹ️</button>
+      <div class="flex gap-2">
+        <button id="tab-dashboard" onclick="state.activeTab = 'dashboard'; render();" class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-slate-800 text-white shadow-md">Dashboard</button>
+        <button id="tab-schedule" onclick="state.activeTab = 'schedule'; render();" class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/50">Schedule</button>
+      </div>
     </header>
 
-    <main>
-      <!-- TAB 1: HOME -->
-      <section id="tab-home" class="tab-content active">
-        <div class="card inventory-banner" onclick="switchTab('pantry')">
-          <div>
-            <div style="font-size: 0.8rem; color: #93c5fd; font-weight: 600;">MASTER INVENTORY</div>
-            <div style="font-size: 1.15rem; font-weight: 700; margin-top: 2px;" id="home-pantry-count">0 Items Logged</div>
-          </div>
-          <div style="font-size: 1.3rem; color: #60a5fa;">→</div>
-        </div>
-
-        <div class="action-grid">
-          <div class="card action-card quick-meal-card" onclick="startQuickMeal()">
-            <div style="font-size: 1.6rem;" id="quick-meal-icon">🎙️</div>
-            <div>
-              <div style="font-weight: 700; font-size: 0.95rem;">Quick Meal</div>
-              <div style="font-size: 0.75rem; color: #94a3b8;">Speak or type</div>
-            </div>
-          </div>
-          <div class="card action-card surprise-card" onclick="triggerSurpriseMe()">
-            <div class="amber-bolt" style="font-size: 1.6rem;">⚡</div>
-            <div>
-              <div style="font-weight: 700; font-size: 0.95rem;">Surprise Me!</div>
-              <div style="font-size: 0.75rem; color: #94a3b8;">Chef choice meal</div>
-            </div>
-          </div>
-        </div>
-
-        <div style="font-size: 0.78rem; font-weight: 700; color: #64748b; margin-top: 6px; letter-spacing: 0.05em;">SMART KITCHEN ACTIONS</div>
-        <div class="squares-bar">
-          <div class="card square-card sq-useit" onclick="openOverlay('overlay-useit')">
-            <span style="font-size: 1.3rem;">⚠️</span>
-            <span style="font-size: 0.75rem; font-weight: 700;">Use It Up</span>
-            <span style="font-size: 0.65rem; color: #fda4af;" id="sq-expiring-count">0 tagged</span>
-          </div>
-          <div class="card square-card sq-speed" onclick="openOverlay('overlay-speed')">
-            <span style="font-size: 1.3rem;">⏱️</span>
-            <span style="font-size: 0.75rem; font-weight: 700;">Speed/Mood</span>
-            <span style="font-size: 0.65rem; color: #93c5fd;">Fast filters</span>
-          </div>
-          <div class="card square-card sq-chef" onclick="triggerChefSecret()">
-            <span style="font-size: 1.3rem;">✨</span>
-            <span style="font-size: 0.75rem; font-weight: 700;">Chef Secret</span>
-            <span style="font-size: 0.65rem; color: #fde68a;">Flavor trick</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 2: PANTRY -->
-      <section id="tab-pantry" class="tab-content">
-        <div class="pantry-input-row">
-          <input type="text" id="pantry-input" class="pantry-input" placeholder="Type ingredients (e.g. bacon, eggs, spinach)..." onblur="resetViewportScroll()">
-          <button class="btn-add-item" onclick="handleAddPantryItem()">Add</button>
-        </div>
-
-        <div id="pantry-categories" style="display: flex; flex-direction: column; gap: 14px; margin-top: 8px;">
-          <!-- Categorized chips -->
-        </div>
-
-        <button class="btn-primary" onclick="generateFromMasterPantry()" style="margin-top: 10px;">Find Meals From Pantry</button>
-      </section>
-
-      <!-- TAB 3: SUGGESTIONS -->
-      <section id="tab-suggestions" class="tab-content">
-        <div style="font-size: 0.85rem; color: #fde68a; font-weight: 600; margin-bottom: 4px;">CURATED TASTE ENGINE</div>
-        <div id="suggestions-container" style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- Dynamically matched taste ideas -->
-        </div>
-        <button class="btn-primary" onclick="fetchSuggestions()" style="background: var(--amber); color: #451a03; margin-top: 10px;">Shuffle Pairings</button>
-      </section>
-
-      <!-- TAB 4: FAVORITES -->
-      <section id="tab-favorites" class="tab-content">
-        <div style="font-size: 0.85rem; color: #f43f5e; font-weight: 600; margin-bottom: 4px;">SAVED COOKBOOK</div>
-        <div id="favorites-list" style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- Saved items -->
-        </div>
-      </section>
+    <main class="flex-1 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-6" id="main-content">
+      <!-- Content renders here -->
     </main>
-
-    <nav>
-      <button class="nav-btn active" id="nav-home" onclick="switchTab('home')">
-        <span style="font-size: 1.15rem;">🏠</span>
-        <span>Home</span>
-      </button>
-      <button class="nav-btn" id="nav-pantry" onclick="switchTab('pantry')">
-        <span style="font-size: 1.15rem;">🥬</span>
-        <span>Pantry</span>
-      </button>
-      <button class="nav-btn" id="nav-suggestions" onclick="switchTab('suggestions')">
-        <span style="font-size: 1.15rem;">💡</span>
-        <span>Ideas</span>
-      </button>
-      <button class="nav-btn" id="nav-favorites" onclick="switchTab('favorites')">
-        <span style="font-size: 1.15rem;">❤️</span>
-        <span>Favorites</span>
-      </button>
-    </nav>
   </div>
 
-  <!-- OVERLAY: RESULTS VIEW -->
-  <div id="overlay-results" class="overlay">
-    <div class="overlay-header">
-      <h2 style="font-size: 1.15rem; font-weight: 800; color: #6ee7b7;" id="results-title">Recipe Results</h2>
-      <button class="icon-btn" onclick="closeOverlay('overlay-results')">✕</button>
-    </div>
-    
-    <div class="portion-toggle">
-      <button class="portion-btn active" id="btn-portion-2" onclick="setPortion(2)">1–2 Servings</button>
-      <button class="portion-btn" id="btn-portion-4" onclick="setPortion(4)">3–4 Servings</button>
-    </div>
-
-    <div id="results-container"></div>
-  </div>
-
-  <!-- OVERLAY: USE IT UP -->
-  <div id="overlay-useit" class="overlay">
-    <div class="overlay-header">
-      <h2 style="font-size: 1.15rem; font-weight: 800; color: #fda4af;">Use It Up (Expiring)</h2>
-      <button class="icon-btn" onclick="closeOverlay('overlay-useit')">✕</button>
-    </div>
-    <div id="useit-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
-    <button class="btn-primary" style="background:var(--ruby); color:#fff;" onclick="generateRescueMeal()">Generate Rescue Meal</button>
-  </div>
-
-  <!-- OVERLAY: SPEED/MOOD -->
-  <div id="overlay-speed" class="overlay">
-    <div class="overlay-header">
-      <h2 style="font-size: 1.15rem; font-weight: 800; color: #93c5fd;">Speed & Mood</h2>
-      <button class="icon-btn" onclick="closeOverlay('overlay-speed')">✕</button>
-    </div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-      <button class="card" style="padding:20px; font-weight:700;" onclick="filterAndGenerate('Under 15 Minutes')">⚡ Under 15m</button>
-      <button class="card" style="padding:20px; font-weight:700;" onclick="filterAndGenerate('One-Pan Meal')">🍳 One-Pan</button>
-      <button class="card" style="padding:20px; font-weight:700;" onclick="filterAndGenerate('High Protein')">🥩 High Protein</button>
-      <button class="card" style="padding:20px; font-weight:700;" onclick="filterAndGenerate('Comfort Food')">🍲 Comfort</button>
-    </div>
-  </div>
-
-  <!-- MODAL: ABOUT -->
-  <div id="settings-modal" class="overlay">
-    <div class="overlay-header">
-      <h2 style="font-size: 1.15rem; font-weight: 800;">About Pantry Chef</h2>
-      <button class="icon-btn" onclick="closeOverlay('settings-modal')">✕</button>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:14px; font-size:0.85rem; line-height:1.6; color:#94a3b8;">
-      <p><strong style="color:#fff;">100% Offline Culinary Engine:</strong> Operates entirely in your browser through combinatorial ingredient synthesis. No external APIs, network latency, or service caps.</p>
-      <p><strong style="color:#fff;">Local & Private:</strong> All inventory and favorites are saved locally on your device.</p>
-    </div>
-  </div>
+  <div id="modal-container"></div>
+  <div id="toast-container"></div>
 
   <script>
-    function loadJSON(key, fallback) {
-      try {
-        const v = JSON.parse(localStorage.getItem(key));
-        return v ?? fallback;
-      } catch {
-        return fallback;
-      }
-    }
-
-    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-
-    const capitalize = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-
-    let toastTimer = null;
-    function showToast(msg) {
-      const toast = document.getElementById('toast');
-      if (!toast) return;
-      if (toastTimer) clearTimeout(toastTimer);
-      toast.textContent = msg;
-      toast.classList.add('show');
-      toastTimer = setTimeout(() => { toast.classList.remove('show'); }, 2400);
-    }
-
-    let pantryItems = loadJSON('pantry_items', []);
-    let currentRecipes = [];
-    let lastFilterContext = null;
-    let currentServings = 2;
-
-    const sayings = [
-      "What's on the menu today?",
-      "What are we cooking?",
-      "What's the vibe tonight?",
-      "Raid the fridge.",
-      "Let's make something great.",
-      "Chef mode: activated.",
-      "Fuel up."
-    ];
-    function initDailyTicker() {
-      const today = new Date().toISOString().slice(0, 10);
-      let hash = 0;
-      for (let i = 0; i < today.length; i++) hash += today.charCodeAt(i);
-      const tickerEl = document.getElementById('daily-ticker');
-      if (tickerEl) tickerEl.textContent = sayings[hash % sayings.length];
-    }
-
-    function resetViewportScroll() {
-      window.scrollTo(0, 0);
-      document.body.scrollTop = 0;
-    }
-
-    function switchTab(tabId) {
-      resetViewportScroll();
-      document.querySelectorAll('.tab-content').forEach(el => el && el.classList.remove('active'));
-      const target = document.getElementById(`tab-${tabId}`);
-      if (target) target.classList.add('active');
-
-      document.querySelectorAll('.nav-btn').forEach(btn => btn && btn.classList.remove('active'));
-      const activeBtn = document.getElementById(`nav-${tabId}`);
-      if (activeBtn) activeBtn.classList.add('active');
-
-      if (tabId === 'home') updateHomeMetrics();
-      if (tabId === 'pantry') renderPantry();
-      if (tabId === 'favorites') renderFavorites();
-      if (tabId === 'suggestions') renderDynamicSuggestions();
-    }
-
-    function openOverlay(id) {
-      resetViewportScroll();
-      const el = document.getElementById(id);
-      if (el) el.classList.add('active');
-      if (id === 'overlay-useit') renderUseItUpList();
-    }
-    function closeOverlay(id) {
-      resetViewportScroll();
-      const el = document.getElementById(id);
-      if (el) el.classList.remove('active');
-    }
-    function openModal(id) { openOverlay(id); }
-
-    const CATEGORIES = {
-      Proteins: ['chicken', 'beef', 'steak', 'pork', 'turkey', 'egg', 'eggs', 'tofu', 'salmon', 'tuna', 'shrimp', 'bacon', 'beans', 'sausage', 'ground beef', 'ham'],
-      Produce: ['spinach', 'onion', 'onions', 'garlic', 'tomato', 'tomatoes', 'potato', 'potatoes', 'broccoli', 'lemon', 'lime', 'avocado', 'peppers', 'pepper', 'bell pepper', 'carrot', 'carrots', 'herbs', 'mushroom', 'mushrooms', 'zucchini', 'kale', 'corn', 'cilantro', 'asparagus', 'cabbage'],
-      Dairy: ['milk', 'cheddar', 'cheese', 'butter', 'yogurt', 'parmesan', 'cream', 'mozzarella', 'feta', 'sour cream'],
-      Grains: ['rice', 'pasta', 'bread', 'flour', 'oats', 'quinoa', 'noodles', 'tortilla', 'tortillas', 'spaghetti', 'penne', 'macaroni'],
-      Spices: ['oil', 'olive oil', 'salt', 'black pepper', 'soy sauce', 'vinegar', 'honey', 'oregano', 'cumin', 'paprika', 'chili', 'garlic powder']
+    let state = {
+      shifts: [],
+      activeTab: 'dashboard',
+      scheduleSubTab: 'working',
+      isListening: false,
+      isProcessing: false,
+      transcript: '',
+      statusMsg: '',
+      month: (new Date().getMonth() + 1).toString(),
+      year: new Date().getFullYear().toString(),
+      showQrModal: false,
+      showAddModal: false,
+      editingShift: null,
+      toastMsg: '',
     };
 
-    function categorize(name) {
-      const lower = name.toLowerCase();
-      for (const [cat, keywords] of Object.entries(CATEGORIES)) {
-        if (keywords.some(k => lower.includes(k))) return cat;
+    function generateCompactId() {
+      return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    }
+
+    function persist() {
+      try {
+        const payload = JSON.stringify(state.shifts);
+        localStorage.setItem('vet_shifts_backup', payload);
+        localStorage.setItem('schedule_sync_shifts', payload);
+      } catch (err) {
+        console.error('Storage persistence failed:', err);
       }
-      return 'Produce';
     }
 
-    function handleAddPantryItem() {
-      const input = document.getElementById('pantry-input');
-      if (!input) return;
-      const val = input.value.trim();
-      if (!val) return;
-
-      const rawItems = val.split(/,|\band\b/i).map(s => s.trim()).filter(Boolean);
-      rawItems.forEach(item => {
-        pantryItems.push({
-          id: Date.now() + Math.random(),
-          name: item,
-          category: categorize(item),
-          expiring: false
-        });
-      });
-
-      localStorage.setItem('pantry_items', JSON.stringify(pantryItems));
-      input.value = '';
-      resetViewportScroll();
-      renderPantry();
-      updateHomeMetrics();
-    }
-
-    function toggleExpiring(id) {
-      pantryItems = pantryItems.map(item => item.id === id ? { ...item, expiring: !item.expiring } : item);
-      localStorage.setItem('pantry_items', JSON.stringify(pantryItems));
-      renderPantry();
-      updateHomeMetrics();
-    }
-
-    function deletePantryItem(id, e) {
-      e.stopPropagation();
-      pantryItems = pantryItems.filter(item => item.id !== id);
-      localStorage.setItem('pantry_items', JSON.stringify(pantryItems));
-      renderPantry();
-      updateHomeMetrics();
-    }
-
-    function renderPantry() {
-      const container = document.getElementById('pantry-categories');
-      if (!container) return;
-      container.innerHTML = '';
-
-      const grouped = {};
-      pantryItems.forEach(item => {
-        if (!grouped[item.category]) grouped[item.category] = [];
-        grouped[item.category].push(item);
-      });
-
-      Object.keys(grouped).forEach(cat => {
-        const group = document.createElement('div');
-        group.className = 'category-group';
-        group.innerHTML = `<div class="category-title">${esc(cat)}</div><div class="chip-cloud"></div>`;
-        container.appendChild(group);
-
-        const cloud = group.querySelector('.chip-cloud');
-        grouped[cat].forEach(item => {
-          const chip = document.createElement('div');
-          chip.className = `chip ${item.expiring ? 'expiring' : ''}`;
-          chip.innerHTML = `<span>${esc(item.name)}</span><span class="chip-del" onclick="deletePantryItem(${item.id}, event)">×</span>`;
-          chip.onclick = () => toggleExpiring(item.id);
-          cloud.appendChild(chip);
-        });
-      });
-    }
-
-    function updateHomeMetrics() {
-      const countEl = document.getElementById('home-pantry-count');
-      if (countEl) countEl.textContent = `${pantryItems.length} Items Logged`;
-
-      const expCount = pantryItems.filter(i => i.expiring).length;
-      const sqExp = document.getElementById('sq-expiring-count');
-      if (sqExp) sqExp.textContent = `${expCount} tagged`;
-    }
-
-    function renderUseItUpList() {
-      const list = document.getElementById('useit-list');
-      if (!list) return;
-      list.innerHTML = '';
-      const expiring = pantryItems.filter(i => i.expiring);
-      if (!expiring.length) {
-        list.innerHTML = `<div style="color:#94a3b8; font-size:0.85rem; padding:10px 0;">No items tagged as expiring. Tap any pantry chip to flag it with a red glow.</div>`;
-        return;
+    try {
+      const saved = localStorage.getItem('vet_shifts_backup') || localStorage.getItem('schedule_sync_shifts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) state.shifts = parsed;
       }
-      expiring.forEach(i => {
-        const row = document.createElement('div');
-        row.className = 'card';
-        row.style.padding = '10px 14px';
-        row.textContent = `⚠️ ${i.name}`;
-        list.appendChild(row);
-      });
+    } catch(e) {}
+
+    window.addEventListener('storage', (e) => {
+      if ((e.key === 'vet_shifts_backup' || e.key === 'schedule_sync_shifts') && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (Array.isArray(updated)) {
+            state.shifts = updated;
+            render();
+          }
+        } catch (err) {}
+      }
+    });
+
+    function parseDateParts(isoStr) {
+      if (!isoStr) return { y: 2026, m: 1, d: 1, h: 0, min: 0 };
+      const [datePart, timePart] = isoStr.replace('Z', '').split('T');
+      const [y, m, d] = datePart.split('-').map(Number);
+      let h = 0, min = 0;
+      if (timePart) {
+        const [hh, mm] = timePart.split(':').map(Number);
+        h = hh || 0;
+        min = mm || 0;
+      }
+      return { y, m, d, h, min };
     }
 
-    /* ==========================================================================
-       COMBINATORIAL CULINARY SYNTHESIS ENGINE (Capped at 75)
-       ========================================================================== */
-    function synthesizeRecipes(filterType = null, onlyExpiring = false) {
-      let activeItems = pantryItems;
-      if (onlyExpiring) {
-        activeItems = pantryItems.filter(i => i.expiring);
-        if (!activeItems.length) return [];
-      }
-      if (!activeItems.length) return [];
+    function processSyncHash() {
+      const currentHash = window.location.hash;
+      if (!currentHash || !currentHash.startsWith('#sync=')) return;
 
-      const proteins = activeItems.filter(i => i.category === 'Proteins').map(i => i.name);
-      const produce = activeItems.filter(i => i.category === 'Produce').map(i => i.name);
-      const grains = activeItems.filter(i => i.category === 'Grains').map(i => i.name);
-      const dairy = activeItems.filter(i => i.category === 'Dairy').map(i => i.name);
-      const spices = activeItems.filter(i => i.category === 'Spices').map(i => i.name);
+      try {
+        const encodedData = currentHash.substring(6);
+        const decodedData = decodeURIComponent(encodedData);
+        const shiftStrings = decodedData.split('|');
 
-      const hasEggs = activeItems.some(i => i.name.toLowerCase().includes('egg'));
-      const hasCheese = activeItems.some(i => i.name.toLowerCase().includes('cheese') || i.name.toLowerCase().includes('cheddar') || i.name.toLowerCase().includes('parmesan'));
-      const sMultiplier = currentServings === 2 ? 1 : 2;
+        const restored = shiftStrings.map(str => {
+          if (!str) return null;
+          const parts = str.split('~');
+          let id, dateStr, sTime, eTime, room, colorCode, title;
 
-      // Fallback lists if categories are sparse
-      const effectiveProteins = proteins.length ? proteins : ['tofu', 'egg', 'beans'];
-      const effectiveProduce = produce.length ? produce : ['garlic', 'onion', 'spinach'];
-      const effectiveGrains = grains.length ? grains : ['rice', 'pasta', 'tortilla'];
+          if (parts.length >= 7) {
+            [id, dateStr, sTime, eTime, room, colorCode, title] = parts;
+          } else if (parts.length === 6) {
+            const isUrgent = parts[5];
+            [id, dateStr, sTime, eTime, room] = parts;
+            colorCode = isUrgent === '1' ? 'red' : 'blue';
+            title = isUrgent === '1' ? 'Urgent Care' : 'Regular Shift';
+          } else if (parts.length === 5) {
+            [dateStr, sTime, eTime, room] = parts;
+            id = generateCompactId();
+            colorCode = 'blue';
+            title = 'Regular Shift';
+          } else {
+            return null;
+          }
 
-      const generated = [];
-      const seenTitles = new Set();
+          return {
+            id: id || generateCompactId(),
+            start: dateStr + 'T' + sTime,
+            end: dateStr + 'T' + eTime,
+            title: title || (colorCode === 'red' ? 'Urgent Care' : colorCode === 'amber' ? 'Surgery' : 'Regular Shift'),
+            details: room || '',
+            colorCode: colorCode || 'blue',
+            date: dateStr,
+            startTime: sTime,
+            endTime: eTime,
+            room: room || '',
+            urgentCare: colorCode === 'red'
+          };
+        }).filter(Boolean);
 
-      function pushRecipe(r) {
-        if (!seenTitles.has(r.title) && generated.length < 75) {
-          seenTitles.add(r.title);
-          generated.push(r);
+        if (restored.length > 0) {
+          state.shifts = restored;
+          persist();
+          state.toastMsg = `Synced ${restored.length} shift${restored.length === 1 ? '' : 's'} from PC!`;
+        } else {
+          state.shifts = [];
+          persist();
+          state.toastMsg = 'Schedule cleared from PC.';
         }
+
+        window.history.replaceState(null, '', window.location.pathname);
+        render();
+        setTimeout(() => { state.toastMsg = ''; render(); }, 4000);
+      } catch (e) {
+        console.error('Failed to parse schedule QR code:', e);
       }
-
-      // Loop through ingredient combinations across 10 Culinary Archetypes
-      effectiveProteins.forEach(prot => {
-        effectiveProduce.forEach(veg => {
-
-          // 1. Skillet Frittata / Scramble
-          if (hasEggs || prot.toLowerCase().includes('egg') || !proteins.length) {
-            pushRecipe({
-              title: `Rustic ${capitalize(prot)} & ${capitalize(veg)} Frittata`,
-              emoji: '🍳',
-              time: '12 mins',
-              tier: hasEggs ? '100% Match' : 'Missing 1 Item',
-              missing: hasEggs ? 'None' : 'Fresh eggs (or silken tofu)',
-              ingredients: [
-                `${4 * sMultiplier} large eggs (beaten)`,
-                `${4 * sMultiplier} oz ${prot} (diced or crumbled)`,
-                `1/2 cup ${veg} (sautéed)`,
-                hasCheese ? `1/3 cup cheese` : 'Salt & cracked black pepper',
-                '1 tbsp butter or olive oil'
-              ],
-              instructions: [
-                `Sauté ${veg} and ${prot} in a hot skillet with melted butter for 3 minutes.`,
-                `Pour beaten eggs over the filling, tilting the pan to ensure even distribution.`,
-                `Cover and cook on low for 5 minutes until fluffy and set, then finish with black pepper.`
-              ],
-              chefTip: 'Keep heat low and trapped under a lid; gentle steam creates a tender custard texture without burning the bottom.'
-            });
-          }
-
-          // 2. Caramelized Skillet Hash
-          pushRecipe({
-            title: `Crisp ${capitalize(prot)} & ${capitalize(veg)} Skillet Hash`,
-            emoji: '🥔',
-            time: '15 mins',
-            tier: proteins.includes(prot) && produce.includes(veg) ? '100% Match' : 'Missing 1 Item',
-            missing: proteins.includes(prot) && produce.includes(veg) ? 'None' : 'Fresh aromatics',
-            ingredients: [
-              `${6 * sMultiplier} oz ${prot} (chopped small)`,
-              `1.5 cups diced ${veg}`,
-              '1.5 tbsp cooking oil or butter',
-              '1/2 tsp salt, pepper, and garlic seasoning'
-            ],
-            instructions: [
-              `Heat oil in a heavy skillet over medium-high heat until shimmering.`,
-              `Add ${veg} and ${prot}, pressing down firmly with a spatula to make direct contact with the pan.`,
-              `Let cook undisturbed for 4 minutes to form a deep brown crust before flipping and tossing.`
-            ],
-            chefTip: 'Do not stir constantly; letting the ingredients sit undisturbed on hot cast iron creates maximum Maillard browning.'
-          });
-
-          // 3. Sheet Pan Roast
-          pushRecipe({
-            title: `Caramelized Sheet Pan ${capitalize(prot)} with ${capitalize(veg)}`,
-            emoji: '🥦',
-            time: '22 mins',
-            tier: proteins.includes(prot) && produce.includes(veg) ? '100% Match' : 'Missing 1 Item',
-            missing: 'None',
-            ingredients: [
-              `${8 * sMultiplier} oz ${prot} (cut into even bite-sized pieces)`,
-              `2 cups ${veg} (chopped)`,
-              '2 tbsp olive oil',
-              spices.length ? spices.slice(0, 2).join(', ') : 'Coarse salt, black pepper, paprika'
-            ],
-            instructions: [
-              `Preheat your oven to 425°F (220°C).`,
-              `Toss ${prot} and ${veg} directly on the baking sheet with oil and seasonings until evenly coated.`,
-              `Spread into a single layer with space between items and roast for 18–20 minutes until edges are blistered and tender.`
-            ],
-            chefTip: 'Crowding the pan creates trapped steam; spreading ingredients out ensures they roast to a crisp caramel rather than getting soggy.'
-          });
-
-          // 4. Aromatic Stir-Fry
-          pushRecipe({
-            title: `Sizzling ${capitalize(prot)} & ${capitalize(veg)} Flash Stir-Fry`,
-            emoji: '🥢',
-            time: '10 mins',
-            tier: '100% Match',
-            missing: 'None',
-            ingredients: [
-              `${6 * sMultiplier} oz thinly sliced ${prot}`,
-              `1.5 cups sliced ${veg}`,
-              '1 tbsp neutral high-heat oil',
-              spices.includes('soy sauce') ? '2 tbsp soy sauce' : 'A pinch of salt, garlic, and cracked pepper'
-            ],
-            instructions: [
-              `Heat your wok or widest skillet over highest heat until lightly smoking.`,
-              `Sear ${prot} in oil for 2 minutes until browned, then push to the perimeter.`,
-              `Toss in ${veg} for 90 seconds of rapid stirring so it stays vibrant and crunchy.`
-            ],
-            chefTip: 'Cook in rapid high-heat bursts to preserve the natural sugars and snap of fresh produce.'
-          });
-
-          // 5. Simmered Herb Pot / Soup
-          pushRecipe({
-            title: `Warm Simmered ${capitalize(prot)} & ${capitalize(veg)} Broth`,
-            emoji: '🍲',
-            time: '20 mins',
-            tier: '100% Match',
-            missing: 'None',
-            ingredients: [
-              `${6 * sMultiplier} oz ${prot}`,
-              `1 cup sliced ${veg}`,
-              `${2 * sMultiplier} cups water or broth`,
-              'Salt, pepper, and dried herbs to taste'
-            ],
-            instructions: [
-              `Lightly brown ${prot} in a saucepan with a drop of oil for 3 minutes.`,
-              `Add ${veg} and pour in ${2 * sMultiplier} cups of liquid, bringing it to a rolling boil.`,
-              `Lower heat and simmer for 15 minutes to extract natural flavors into a comforting, savory reduction.`
-            ],
-            chefTip: 'A splash of vinegar or citrus off the heat cuts through broth heaviness and balances savory notes.'
-          });
-
-          // 6. Grains, Pastas & Melts
-          effectiveGrains.forEach(grn => {
-            const isRice = grn.toLowerCase().includes('rice');
-            const isPasta = grn.toLowerCase().includes('pasta') || grn.toLowerCase().includes('noodle') || grn.toLowerCase().includes('spaghetti');
-            const isBread = grn.toLowerCase().includes('tortilla') || grn.toLowerCase().includes('bread');
-
-            if (isRice) {
-              pushRecipe({
-                title: `Crispy Skillet ${capitalize(prot)} & ${capitalize(veg)} Rice Bowl`,
-                emoji: '🍚',
-                time: '15 mins',
-                tier: grains.some(g => g.toLowerCase().includes('rice')) ? '100% Match' : 'Missing 1 Item',
-                missing: grains.some(g => g.toLowerCase().includes('rice')) ? 'None' : 'Pre-cooked rice',
-                ingredients: [
-                  `${1.5 * sMultiplier} cups cooked rice`,
-                  `${6 * sMultiplier} oz ${prot}`,
-                  `1 cup sliced ${veg}`,
-                  '1.5 tbsp cooking oil',
-                  'Soy sauce or seasoned garlic salt'
-                ],
-                instructions: [
-                  `Sear ${prot} in a hot skillet with oil, then set aside.`,
-                  `Quickly sauté ${veg} for 2 minutes, then spread cooked rice across the pan.`,
-                  `Press down and let the rice sizzle for 3 minutes undisturbed to create crispy golden socarrat, then toss together.`
-                ],
-                chefTip: 'Cold, day-old grains fry far better than fresh warm rice because the dried starch grains brown instead of clumping.'
-              });
-            } else if (isPasta) {
-              pushRecipe({
-                title: `Pan-Glazed ${capitalize(prot)} & ${capitalize(veg)} ${capitalize(grn)}`,
-                emoji: '🍝',
-                time: '18 mins',
-                tier: grains.some(g => g.toLowerCase().includes('pasta')) ? '100% Match' : 'Missing 1 Item',
-                missing: grains.some(g => g.toLowerCase().includes('pasta')) ? 'None' : 'Pasta of choice',
-                ingredients: [
-                  `${6 * sMultiplier} oz ${grn}`,
-                  `${6 * sMultiplier} oz ${prot}`,
-                  `1 cup ${veg}`,
-                  dairy.length ? `2 tbsp ${dairy[0]}` : '2 tbsp olive oil',
-                  '1/4 cup reserved starchy pasta cooking water'
-                ],
-                instructions: [
-                  `Boil ${grn} in salted water until al dente, reserving 1/4 cup cooking water before draining.`,
-                  `In a skillet, sauté ${prot} and ${veg} in oil or butter until tender.`,
-                  `Toss the pasta into the skillet, pour in the reserved cooking water, and swirl vigorously over medium heat for 60 seconds.`
-                ],
-                chefTip: 'The starch dissolved into the pasta boiling water acts as an emulsifier to bind fats into a restaurant-gloss sauce.'
-              });
-            } else if (isBread || hasCheese) {
-              pushRecipe({
-                title: `Toasted ${capitalize(prot)} & ${capitalize(veg)} Panini Melt`,
-                emoji: '🧀',
-                time: '10 mins',
-                tier: hasCheese ? '100% Match' : 'Missing 1 Item',
-                missing: hasCheese ? 'None' : 'Melting cheese',
-                ingredients: [
-                  `${sMultiplier} tortillas or bread slices`,
-                  `${4 * sMultiplier} oz ${prot}`,
-                  `1/3 cup sautéed ${veg}`,
-                  `${3 * sMultiplier} oz sliced or shredded cheese`,
-                  '1 tbsp butter for pan browning'
-                ],
-                instructions: [
-                  `Layer cheese, cooked ${prot}, and ${veg} between bread or inside a folded tortilla.`,
-                  `Melt butter in a skillet over medium-low heat.`,
-                  `Grill for 3–4 minutes per side, pressing down firmly, until golden brown and cheese is completely melted.`
-                ],
-                chefTip: 'Keep temperature moderate so the cheese fully melts through before the exterior bread over-browns.'
-              });
-            }
-          });
-
-          // 7. Cream / Dairy Glazed Skillet
-          if (dairy.length || hasCheese) {
-            const dName = dairy[0] || 'butter';
-            pushRecipe({
-              title: `Velvety ${capitalize(dName)}-Braised ${capitalize(prot)} & ${capitalize(veg)}`,
-              emoji: '🧈',
-              time: '16 mins',
-              tier: '100% Match',
-              missing: 'None',
-              ingredients: [
-                `${6 * sMultiplier} oz ${prot}`,
-                `1 cup chopped ${veg}`,
-                `3 tbsp ${dName}`,
-                'Black pepper and fresh garlic salt'
-              ],
-              instructions: [
-                `Sear ${prot} until golden in a warm pan, then stir in ${veg}.`,
-                `Drop heat to low and melt in ${dName}, swirling gently to create a rich glaze.`,
-                `Simmer for 3 minutes until vegetables are glossy and coated, then season to taste.`
-              ],
-              chefTip: 'Adding cold dairy to a warm pan off the heat creates a rich pan emulsion that never breaks or separates.'
-            });
-          }
-
-        });
-      });
-
-      // Filter handling
-      let filtered = generated;
-      if (filterType === 'Under 15 Minutes') {
-        filtered = generated.filter(r => parseInt(r.time) <= 15);
-      } else if (filterType === 'High Protein') {
-        filtered = generated.filter(r => proteins.some(p => r.title.toLowerCase().includes(p.toLowerCase())));
-      } else if (filterType === 'One-Pan Meal') {
-        filtered = generated.filter(r => r.title.includes('Skillet') || r.title.includes('Sheet Pan') || r.title.includes('Broth'));
-      }
-
-      // Return discovered variations capped cleanly at 75
-      return filtered.slice(0, 75);
     }
 
-    function setPortion(num) {
-      if (currentServings === num) return;
-      currentServings = num;
-      document.getElementById('btn-portion-2')?.classList.toggle('active', num === 2);
-      document.getElementById('btn-portion-4')?.classList.toggle('active', num === 4);
-      if (lastFilterContext) lastFilterContext();
+    window.addEventListener('hashchange', processSyncHash);
+    window.addEventListener('pageshow', processSyncHash);
+    processSyncHash();
+
+    function formatTime(rawStr) {
+      if (!rawStr) return '';
+      const parts = rawStr.split('T');
+      if (parts.length !== 2) return rawStr;
+      let [h, m] = parts[1].split(':');
+      let hInt = parseInt(h, 10);
+      let ampm = hInt >= 12 ? 'PM' : 'AM';
+      hInt = hInt % 12;
+      if (hInt === 0) hInt = 12;
+      return `${hInt}:${m} ${ampm}`;
     }
 
-    function renderRecipeCards() {
-      const container = document.getElementById('results-container');
-      if (!container) return;
-      container.innerHTML = '';
-
-      if (!currentRecipes.length) {
-        container.innerHTML = `<div style="color:#94a3b8; font-size:0.85rem; padding:20px; text-align:center;">Add ingredients to your pantry to see matched meals!</div>`;
-        return;
+    function renderShiftCard(shift) {
+      const { y, m, d } = parseDateParts(shift.start);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthStr = monthNames[m - 1] || '---';
+      const dayStr = d.toString().padStart(2, '0');
+      
+      let borderColorClass = 'border-2 border-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.35)]';
+      let textColorClass = 'text-blue-400';
+      let label = 'REGULAR';
+      let pulseClass = '';
+      
+      if (shift.colorCode === 'red') {
+        borderColorClass = 'border-2 border-red-500';
+        textColorClass = 'text-red-400';
+        label = 'URGENT';
+        pulseClass = 'animate-pulse-shadow-urgent';
+      } else if (shift.colorCode === 'amber') {
+        borderColorClass = 'border-2 border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.35)]';
+        textColorClass = 'text-amber-400';
+        label = 'SURGERY';
+      } else if (shift.colorCode === 'violet') {
+        borderColorClass = 'border-2 border-purple-400 shadow-[0_0_10px_rgba(192,132,252,0.35)]';
+        textColorClass = 'text-purple-400';
+        label = 'DROP-OFF';
       }
 
-      currentRecipes.forEach((r, idx) => {
-        const ingredients = Array.isArray(r.ingredients) ? r.ingredients : [];
-        const instructions = Array.isArray(r.instructions) ? r.instructions : [];
+      const hasRoomInfo = shift.details && /room/i.test(shift.details);
 
-        const card = document.createElement('div');
-        card.className = 'recipe-card';
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:1.4rem;">${esc(r.emoji || '🍽️')}</span>
-              <div>
-                <div style="font-weight:700; font-size:0.95rem;">${esc(r.title)}</div>
-                <div style="font-size:0.75rem; color:#94a3b8;">${esc(r.time)} • <span style="color:#34d399;">${esc(r.tier)}</span></div>
+      return `
+        <div class="p-2.5 sm:p-4 bg-slate-800/40 rounded-xl flex flex-row items-center gap-3 sm:gap-4 ${borderColorClass} transition-colors group ${pulseClass}">
+          <div class="flex flex-col w-12 sm:w-14 min-w-[48px] sm:min-w-[56px] rounded-xl overflow-hidden border border-slate-700/80 shadow-md shrink-0 bg-slate-800/80">
+            <div class="bg-red-500/90 text-white text-[8px] sm:text-[9px] font-bold uppercase tracking-widest text-center py-0.5 sm:py-1">
+              ${monthStr}
+            </div>
+            <div class="flex items-center justify-center py-0.5 sm:py-1.5 bg-slate-900/50">
+              <span class="text-base sm:text-xl font-bold text-white leading-tight">${dayStr}</span>
+            </div>
+          </div>
+          
+          <div class="flex-1 min-w-0 flex flex-col justify-center">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
+              <h3 class="text-[13px] sm:text-lg font-medium text-white truncate leading-tight sm:leading-normal">${shift.title}</h3>
+              <div class="flex flex-row items-center gap-2">
+                ${hasRoomInfo ? `
+                  <span class="text-amber-200 bg-amber-400/10 border border-amber-300/30 px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-xs truncate">
+                    ${shift.details}
+                  </span>
+                ` : `
+                  ${shift.details ? `<span class="text-slate-400 text-[10px] sm:text-sm truncate sm:border-l sm:border-slate-600 sm:pl-2">
+                    ${shift.details}
+                  </span>` : ''}
+                `}
+                <span class="w-max text-[8px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${textColorClass} bg-current/10 border-current/30">
+                  ${label}
+                </span>
               </div>
             </div>
-            <button class="icon-btn" onclick="saveToFavorites(${idx}, event)">❤️</button>
+            <div class="text-[11px] sm:text-sm font-mono mt-0.5 sm:mt-1 text-emerald-400 leading-tight sm:leading-normal">
+              ${formatTime(shift.start)} — ${formatTime(shift.end)}
+            </div>
           </div>
-          ${r.missing && r.missing !== 'None' ? `<div style="font-size:0.75rem; color:#fde68a; margin-top:6px;">⚠️ Swap: ${esc(r.missing)}</div>` : ''}
-          <div class="recipe-details">
-            <strong>Ingredients:</strong>
-            <ul style="margin: 6px 0 10px 18px;">${ingredients.map(i => `<li>${esc(i)}</li>`).join('')}</ul>
-            <strong>Instructions:</strong>
-            <ol style="margin: 6px 0 10px 18px;">${instructions.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
-            <div style="color:#6ee7b7; font-size:0.78rem;">💡 ${esc(r.chefTip)}</div>
-          </div>
-        `;
-        card.onclick = (e) => {
-          if (e.target.tagName !== 'BUTTON') card.classList.toggle('expanded');
-        };
-        container.appendChild(card);
-      });
-    }
-
-    function showResults(title, recipes) {
-      openOverlay('overlay-results');
-      document.getElementById('results-title').textContent = `${title} (${recipes.length})`;
-      currentRecipes = recipes;
-      renderRecipeCards();
-    }
-
-    function generateFromMasterPantry() {
-      if (!pantryItems.length) return showToast('Add ingredients to pantry first!');
-      lastFilterContext = generateFromMasterPantry;
-      showResults('Pantry Recipes', synthesizeRecipes());
-    }
-
-    function triggerSurpriseMe() {
-      if (!pantryItems.length) return showToast('Add ingredients to pantry first!');
-      lastFilterContext = triggerSurpriseMe;
-      const shuffled = synthesizeRecipes().sort(() => Math.random() - 0.5);
-      showResults('Surprise Dishes', shuffled);
-    }
-
-    function startQuickMeal() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'en-US';
-        const icon = document.getElementById('quick-meal-icon');
-        icon.textContent = '🔴';
-        recognition.onresult = (e) => {
-          icon.textContent = '🎙️';
-          const spoken = e.results[0][0].transcript;
-          if (spoken) addItemsAndRun(spoken);
-        };
-        recognition.onerror = () => {
-          icon.textContent = '🎙️';
-          fallbackTextPrompt();
-        };
-        recognition.start();
-      } else {
-        fallbackTextPrompt();
-      }
-    }
-
-    function fallbackTextPrompt() {
-      const spoken = prompt('Enter ingredients on hand (e.g. bacon, eggs, cheddar):');
-      if (spoken) addItemsAndRun(spoken);
-    }
-
-    function addItemsAndRun(text) {
-      text.split(/,|\band\b/i).forEach(item => {
-        if (item.trim()) {
-          pantryItems.push({
-            id: Date.now() + Math.random(),
-            name: item.trim(),
-            category: categorize(item.trim()),
-            expiring: false
-          });
-        }
-      });
-      localStorage.setItem('pantry_items', JSON.stringify(pantryItems));
-      updateHomeMetrics();
-      generateFromMasterPantry();
-    }
-
-    function generateRescueMeal() {
-      closeOverlay('overlay-useit');
-      const expiring = pantryItems.filter(i => i.expiring);
-      if (!expiring.length) return showToast('No expiring items tagged.');
-      lastFilterContext = generateRescueMeal;
-      showResults('Rescue Meals', synthesizeRecipes(null, true));
-    }
-
-    function filterAndGenerate(mood) {
-      closeOverlay('overlay-speed');
-      lastFilterContext = () => filterAndGenerate(mood);
-      showResults(`${mood} Meals`, synthesizeRecipes(mood));
-    }
-
-    function triggerChefSecret() {
-      openOverlay('overlay-results');
-      document.getElementById('results-title').textContent = "Chef's Flavor Secret";
-      const container = document.getElementById('results-container');
-      const p = pantryItems[0]?.name || 'your dish';
-      container.innerHTML = `
-        <div class="recipe-card expanded">
-          <div style="font-weight:700; font-size:1rem; color:#fde68a;">The Salt-Acid-Heat Rule</div>
-          <div class="recipe-details" style="display:block;">
-            <p style="margin-bottom:8px; color:#a7f3d0;">Whenever cooking with ${esc(p)}, if the food tastes flat even after salting, it is almost never lacking salt—it lacks acid.</p>
-            <p style="color:#94a3b8;">A single splash of vinegar, squeeze of lemon, or dollop of mustard right before serving cuts through heavy fats and brings muted flavors to life.</p>
+          
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 shrink-0 pl-2">
+            <button onclick="editShift('${shift.id}')" class="p-2 sm:p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-400 transition-all shadow-sm" title="Edit Shift">
+              <i data-lucide="edit-2" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+            </button>
+            <button onclick="removeShift('${shift.id}')" class="p-2 sm:p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-red-400 transition-all shadow-sm" title="Delete Shift">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+            </button>
           </div>
         </div>
       `;
     }
 
-    function renderDynamicSuggestions() {
-      const container = document.getElementById('suggestions-container');
-      if (!container) return;
-      container.innerHTML = '';
+    function renderDashboard(container) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      const pNames = pantryItems.map(i => capitalize(i.name));
-      const pair1 = pNames[0] || 'Crisp Greens';
-      const pair2 = pNames[1] || 'Toasted Garlic';
-      const pair3 = pNames[2] || 'Aged Cheese';
-
-      const ideas = [
-        { title: `${pair1} Sauté with Acid Finish`, emoji: "🥢", time: "10m", why: `Highlights ${pair1.toLowerCase()} using high heat and pan caramelization.` },
-        { title: `Warm ${pair2} Infused Skillet`, emoji: "🍳", time: "12m", why: `Builds rich aromatic fats to coat whatever vegetables you have.` },
-        { title: `Crispy Pan Melt with ${pair3}`, emoji: "🥪", time: "8m", why: `Combines melting proteins with crunch for fast satisfaction.` }
-      ];
-
-      ideas.forEach(s => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:700;">${s.emoji} ${esc(s.title)}</div>
-            <span style="font-size:0.75rem; color:#94a3b8;">${s.time}</span>
-          </div>
-          <div style="font-size:0.78rem; color:#fde68a; margin-top:4px;">✨ ${esc(s.why)}</div>
-        `;
-        container.appendChild(card);
+      const allShiftsSorted = [...state.shifts].sort((a, b) => {
+        const da = parseDateParts(a.start);
+        const db = parseDateParts(b.start);
+        return new Date(da.y, da.m - 1, da.d, da.h, da.min) - new Date(db.y, db.m - 1, db.d, db.h, db.min);
       });
-    }
 
-    function fetchSuggestions() {
-      renderDynamicSuggestions();
-      showToast('Refreshed ideas!');
-    }
+      const windowEnd = new Date(today);
+      windowEnd.setDate(today.getDate() + 7);
+      windowEnd.setHours(23, 59, 59, 999);
 
-    function saveToFavorites(idx, e) {
-      e.stopPropagation();
-      const recipe = currentRecipes[idx];
-      if (!recipe) return;
+      let displayedShifts = allShiftsSorted.filter(s => {
+        const p = parseDateParts(s.start);
+        const d = new Date(p.y, p.m - 1, p.d, p.h, p.min);
+        return d >= today && d <= windowEnd;
+      });
 
-      let favs = loadJSON('pantry_favs', []);
-      if (!favs.some(f => f.title === recipe.title)) {
-        favs.push({ ...recipe, id: Date.now() });
-        localStorage.setItem('pantry_favs', JSON.stringify(favs));
-        showToast(`Saved ${recipe.title}!`);
+      let sectionTitle = "Shift Matrix (Next 7 Days)";
+      let badgeLabel = `${displayedShifts.length} UPCOMING`;
+
+      if (displayedShifts.length === 0 && allShiftsSorted.length > 0) {
+        displayedShifts = allShiftsSorted.slice(0, 8);
+        sectionTitle = "Upcoming Schedule Matrix";
+        badgeLabel = `${allShiftsSorted.length} TOTAL SCHEDULED`;
+      }
+
+      let shiftsHtml = '';
+      if (displayedShifts.length === 0) {
+        shiftsHtml = `
+          <div class="min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-10">
+            <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Tap "+ Add Shift" or dictate on PC.</p>
+          </div>
+        `;
       } else {
-        showToast('Already in Favorites');
+        shiftsHtml = displayedShifts.map(shift => renderShiftCard(shift)).join('');
+      }
+
+      let waveHtml = '';
+      for(let i=0; i<5; i++) {
+        waveHtml += `<div class="w-1 rounded-full transition-all duration-300 ${state.isListening ? 'bg-cyan-400 shadow-[0_0_12px_#22d3ee] wave-active wave-delay-' + i : 'bg-slate-700 h-1.5 opacity-50'}"></div>`;
+      }
+
+      container.innerHTML = `
+        <div class="min-h-full lg:h-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-6 gap-4 sm:gap-6 pb-24 lg:pb-0">
+          
+          <!-- 1. Schedule Matrix (Visible on phone & PC) -->
+          <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[340px] shrink-0 lg:shrink">
+            <div class="p-3 sm:p-4 border-b border-slate-800/50 flex flex-wrap justify-between items-center gap-2 shrink-0">
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+                  ${badgeLabel}
+                </span>
+              </div>
+              
+              <!-- Direct Action Buttons (Add Shift + Export) -->
+              <div class="flex items-center gap-2">
+                <button 
+                  onclick="openAddModal()" 
+                  class="flex items-center gap-1.5 px-3 py-2 bg-slate-800/90 border border-slate-700 hover:border-cyan-400/50 rounded-xl text-cyan-300 hover:bg-slate-800 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-sm"
+                  title="Manually add a shift"
+                >
+                  <i data-lucide="plus" class="w-4 h-4 text-cyan-400"></i>
+                  <span>Add Shift</span>
+                </button>
+
+                <button 
+                  onclick="exportCalendar()" 
+                  class="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 hover:bg-emerald-500/30 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-lg shadow-emerald-950/40 ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
+                  title="Add shifts directly to Apple Calendar"
+                >
+                  <i data-lucide="calendar-plus" class="w-4 h-4 text-emerald-400"></i>
+                  <span>Export to Calendar</span>
+                </button>
+              </div>
+            </div>
+            
+            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[520px] lg:max-h-none scroll-hide">
+              ${shiftsHtml}
+            </div>
+          </div>
+
+          <!-- 2. PC Dictation Interface (HIDDEN ON PHONE) -->
+          <div class="hidden lg:flex col-span-4 row-span-4 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex-col shadow-2xl relative shrink-0">
+            <div class="absolute top-4 right-4">
+              <div class="w-2 h-2 rounded-full ${state.isListening ? 'bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse' : 'bg-violet-500 shadow-[0_0_10px_#a855f7]'}"></div>
+            </div>
+            <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400 mb-4 shrink-0">PC Dictation Interface</h2>
+            <div class="flex-1 flex flex-col gap-4 min-h-[190px]">
+              <div class="relative group flex-1 flex flex-col">
+                <textarea
+                  id="transcript-input"
+                  class="w-full h-full min-h-[110px] bg-slate-950/50 border border-slate-800 rounded-2xl p-4 pb-14 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-all placeholder:text-slate-700 resize-none custom-scrollbar"
+                  placeholder="PASTE SCHEDULE DATA OR SPEAK..."
+                >${state.transcript}</textarea>
+                <div class="absolute bottom-4 right-4 flex gap-2">
+                  <button
+                    onclick="toggleListening()"
+                    class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center transition-all ${state.isListening ? 'text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'text-slate-400 hover:text-white hover:border-violet-500/50'}"
+                  >
+                    ${state.isListening ? '<i data-lucide="square" class="w-4 h-4 fill-current"></i>' : '<i data-lucide="mic" class="w-5 h-5"></i>'}
+                  </button>
+                </div>
+              </div>
+              <button
+                onclick="processTranscript()"
+                ${state.isProcessing ? 'disabled' : ''}
+                class="w-full py-3.5 bg-gradient-to-r from-violet-600 to-emerald-600 rounded-2xl text-white font-bold uppercase tracking-widest text-xs shadow-lg shadow-violet-900/20 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+              >
+                ${state.isProcessing ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Processing Neural Feed' : 'Process Neural Feed'}
+              </button>
+              ${state.statusMsg ? `<div class="mt-2 text-center text-xs font-mono text-emerald-400 p-2 bg-slate-900/50 rounded border border-emerald-500/20">${state.statusMsg}</div>` : ''}
+            </div>
+            <div class="mt-4 pt-4 border-t border-slate-800/50 shrink-0">
+              <div class="flex items-center justify-center gap-1.5 h-6 mb-2">
+                ${waveHtml}
+              </div>
+              <div class="flex justify-between items-center text-[10px] font-mono text-slate-500 uppercase">
+                <span>Memory Buffer</span>
+                <span>${(state.transcript.length / 1024).toFixed(3)} KB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. PC QR Code Generation Hub (HIDDEN ON PHONE) -->
+          <div class="hidden lg:flex col-span-4 row-span-2 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl p-6 flex-col justify-between shadow-2xl shrink-0">
+            <h2 class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">Sync to Phone</h2>
+            <div class="grid grid-cols-2 gap-3 mt-auto">
+              <button 
+                onclick="openQrModal()"
+                class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl cursor-pointer group transition-all active:scale-95 hover:border-cyan-400/70 hover:bg-cyan-500/10 hover:shadow-[0_0_12px_rgba(34,211,238,0.3)]"
+                title="Display QR code for phone camera"
+              >
+                <i data-lucide="qr-code" class="w-5 h-5 text-cyan-400 transition-colors"></i>
+                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">
+                  Display QR Code<br/>(For Phone)
+                </span>
+              </button>
+
+              <button 
+                onclick="exportCalendar()"
+                class="flex flex-col items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl hover:border-emerald-500/50 transition-all group ${state.shifts.length === 0 ? 'opacity-50 pointer-events-none' : ''}"
+              >
+                <i data-lucide="download" class="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform"></i>
+                <span class="text-[10px] font-mono uppercase text-slate-300 text-center leading-tight">Download .ICS<br/>(File)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const ta = document.getElementById('transcript-input');
+      if (ta) {
+        ta.addEventListener('input', (e) => {
+          state.transcript = e.target.value;
+          const kb = (state.transcript.length / 1024).toFixed(3);
+          const spans = document.querySelectorAll('.text-\\[10px\\].font-mono.text-slate-500.uppercase span');
+          if (spans.length > 1) spans[1].innerText = kb + ' KB';
+        });
       }
     }
 
-    function renderFavorites() {
-      const list = document.getElementById('favorites-list');
-      if (!list) return;
-      list.innerHTML = '';
-      const favs = loadJSON('pantry_favs', []);
-      if (!favs.length) {
-        list.innerHTML = `<div style="color:#94a3b8; font-size:0.85rem; text-align:center; padding:20px;">No saved favorites yet. Tap ❤️ on any recipe card to save it here.</div>`;
+    function renderSchedule(container) {
+      const y = parseInt(state.year);
+      const m = parseInt(state.month) - 1;
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      
+      const monthWorkingShifts = state.shifts.filter(s => {
+        const p = parseDateParts(s.start);
+        return (p.m - 1) === m && p.y === y;
+      }).sort((a,b) => {
+        const da = parseDateParts(a.start);
+        const db = parseDateParts(b.start);
+        return new Date(da.y, da.m - 1, da.d, da.h, da.min) - new Date(db.y, db.m - 1, db.d, db.h, db.min);
+      });
+
+      const daysOff = [];
+      for(let i=1; i<=daysInMonth; i++) {
+        const currentDate = new Date(y, m, i);
+        const hasShift = monthWorkingShifts.some(s => {
+          const p = parseDateParts(s.start);
+          return p.d === i;
+        });
+        if(!hasShift) {
+          daysOff.push(currentDate);
+        }
+      }
+
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      let monthOptions = '';
+      months.forEach((name, i) => {
+        monthOptions += `<option value="${i+1}" ${state.month == (i+1) ? 'selected' : ''}>${name}</option>`;
+      });
+
+      let contentHtml = '';
+      if (state.scheduleSubTab === 'working') {
+        if (monthWorkingShifts.length === 0) {
+          contentHtml = `
+            <div class="flex flex-col items-center justify-center text-slate-500 py-20 mt-10">
+               <i data-lucide="check-circle-2" class="w-12 h-12 mb-3 opacity-20"></i>
+               <p class="font-mono text-sm uppercase tracking-widest text-slate-600 text-center">No shifts scheduled for this month</p>
+            </div>
+          `;
+        } else {
+          contentHtml = `<div class="space-y-3">` + monthWorkingShifts.map(s => renderShiftCard(s)).join('') + `</div>`;
+        }
+      } else {
+        contentHtml = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">` + daysOff.map(date => `
+          <div class="p-4 bg-slate-800/20 border border-slate-700/30 rounded-2xl flex flex-col items-center justify-center text-center gap-1 hover:border-cyan-500/30 transition-colors">
+            <span class="text-[10px] uppercase font-mono text-slate-500">${date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+            <span class="text-2xl font-bold text-slate-400">${date.getDate()}</span>
+            <span class="text-[10px] uppercase font-mono text-cyan-500/70 bg-cyan-500/10 px-2 py-0.5 rounded-full mt-1 border border-cyan-500/20">OFF</span>
+          </div>
+        `).join('') + `</div>`;
+      }
+
+      container.innerHTML = `
+        <div class="h-full bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl overflow-hidden min-h-[400px]">
+          <div class="p-4 border-b border-slate-800/50 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+            <div class="flex items-center gap-3">
+              <select 
+                onchange="state.month = this.value; render();"
+                class="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 text-sm font-medium"
+              >
+                ${monthOptions}
+              </select>
+              <select 
+                onchange="state.year = this.value; render();"
+                class="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 text-sm font-medium"
+              >
+                <option value="2024" ${state.year === '2024' ? 'selected' : ''}>2024</option>
+                <option value="2025" ${state.year === '2025' ? 'selected' : ''}>2025</option>
+                <option value="2026" ${state.year === '2026' ? 'selected' : ''}>2026</option>
+                <option value="2027" ${state.year === '2027' ? 'selected' : ''}>2027</option>
+              </select>
+            </div>
+            
+            <div class="flex bg-slate-950 p-1 rounded-lg">
+              <button 
+                onclick="state.scheduleSubTab = 'working'; render();" 
+                class="px-4 py-1.5 rounded-md text-sm font-medium tracking-wide transition-all ${state.scheduleSubTab === 'working' ? 'bg-slate-800 text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}"
+              >
+                Working (${monthWorkingShifts.length})
+              </button>
+              <button 
+                onclick="state.scheduleSubTab = 'off'; render();" 
+                class="px-4 py-1.5 rounded-md text-sm font-medium tracking-wide transition-all ${state.scheduleSubTab === 'off' ? 'bg-slate-800 text-cyan-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}"
+              >
+                Days Off (${daysOff.length})
+              </button>
+            </div>
+          </div>
+          
+          <div class="flex-1 p-4 overflow-y-auto scroll-hide">
+            ${contentHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderModals() {
+      const modalContainer = document.getElementById('modal-container');
+      let html = '';
+
+      if (state.showQrModal) {
+        html += `
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-sm w-full flex flex-col items-center shadow-2xl shadow-cyan-900/20 relative">
+              <button onclick="closeQrModal()" class="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors">
+                <i data-lucide="x" class="w-5 h-5"></i>
+              </button>
+              <h3 class="text-xl font-bold text-white mb-1">Scan with Phone</h3>
+              <p class="text-xs text-slate-400 text-center mb-6">Open your iPhone Camera app and point it here.</p>
+              <div class="bg-white p-4 rounded-2xl mb-6 flex items-center justify-center w-full max-w-[280px]">
+                <div id="qrcode" class="w-full flex justify-center items-center"></div>
+              </div>
+              <button onclick="closeQrModal()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 transition-colors">Done</button>
+            </div>
+          </div>
+        `;
+      }
+
+      // 1. ADD SHIFT MODAL
+      if (state.showAddModal) {
+        const now = new Date();
+        const yStr = now.getFullYear();
+        const mStr = String(now.getMonth() + 1).padStart(2, '0');
+        const dStr = String(now.getDate()).padStart(2, '0');
+        const defaultStart = `${yStr}-${mStr}-${dStr}T07:30`;
+        const defaultEnd = `${yStr}-${mStr}-${dStr}T17:30`;
+
+        html += `
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAddModal()"></div>
+            <div class="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="flex items-center justify-between p-4 border-b border-slate-800">
+                <h3 class="text-lg font-medium text-white flex items-center gap-2">
+                  <i data-lucide="plus-circle" class="w-4 h-4 text-cyan-400"></i> Add New Shift
+                </h3>
+                <button onclick="closeAddModal()" class="text-slate-500 hover:text-white transition-colors">
+                  <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+              </div>
+              <form onsubmit="saveNewShift(event)" class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Shift Type & Color</label>
+                    <select id="add-color" onchange="onAddColorChange(this)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm font-medium">
+                      <option value="blue">Regular (Blue)</option>
+                      <option value="amber">Surgery (Amber)</option>
+                      <option value="red">Urgent Care (Red)</option>
+                      <option value="violet">Drop-Off (Purple)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
+                    <input type="text" id="add-title" value="Regular Shift" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm" required>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Details (Room, Location)</label>
+                  <input type="text" id="add-details" placeholder="e.g. Room 2, Dental" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Start Time</label>
+                    <input type="datetime-local" id="add-start" value="${defaultStart}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm" required>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">End Time</label>
+                    <input type="datetime-local" id="add-end" value="${defaultEnd}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm" required>
+                  </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                  <button type="button" onclick="closeAddModal()" class="px-5 py-2.5 rounded-xl text-slate-400 font-medium hover:text-white hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button type="submit" class="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-colors">Add to Schedule</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. EDIT SHIFT MODAL
+      if (state.editingShift) {
+        const shift = state.editingShift;
+        const startVal = shift.start ? shift.start.slice(0, 16) : `${shift.date}T${shift.startTime}`;
+        const endVal = shift.end ? shift.end.slice(0, 16) : `${shift.date}T${shift.endTime}`;
+        html += `
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeEditModal()"></div>
+            <div class="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="flex items-center justify-between p-4 border-b border-slate-800">
+                <h3 class="text-lg font-medium text-white flex items-center gap-2">
+                  <i data-lucide="edit-2" class="w-4 h-4 text-emerald-400"></i> Edit Schedule Entry
+                </h3>
+                <button onclick="closeEditModal()" class="text-slate-500 hover:text-white transition-colors">
+                  <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+              </div>
+              <form onsubmit="saveEditedShift(event)" class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Shift Type & Color</label>
+                    <select id="edit-color" onchange="onEditColorChange(this)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm font-medium">
+                      <option value="blue" ${shift.colorCode === 'blue' ? 'selected' : ''}>Regular (Blue)</option>
+                      <option value="amber" ${shift.colorCode === 'amber' ? 'selected' : ''}>Surgery (Amber)</option>
+                      <option value="red" ${shift.colorCode === 'red' ? 'selected' : ''}>Urgent Care (Red)</option>
+                      <option value="violet" ${shift.colorCode === 'violet' ? 'selected' : ''}>Drop-Off (Purple)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
+                    <input type="text" id="edit-title" value="${shift.title.replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Details (Room, Location)</label>
+                  <input type="text" id="edit-details" value="${(shift.details || shift.room || '').replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Start Time</label>
+                    <input type="datetime-local" id="edit-start" value="${startVal}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">End Time</label>
+                    <input type="datetime-local" id="edit-end" value="${endVal}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                  </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                  <button type="button" onclick="closeEditModal()" class="px-5 py-2.5 rounded-xl text-slate-400 font-medium hover:text-white hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+      modalContainer.innerHTML = html;
+
+      if (state.showQrModal) {
+        setTimeout(() => {
+          try {
+            const container = document.getElementById('qrcode');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const compactString = state.shifts.map(s => {
+              let datePart = s.date || '';
+              let startTime = s.startTime || '';
+              let endTime = s.endTime || '';
+
+              if (s.start && s.start.includes('T')) {
+                const parts = s.start.split('T');
+                datePart = parts[0];
+                startTime = parts[1];
+              }
+              if (s.end && s.end.includes('T')) {
+                endTime = s.end.split('T')[1];
+              }
+
+              if (!datePart || !startTime || !endTime) return null;
+
+              const cCode = s.colorCode || 'blue';
+              const cleanTitle = (s.title || 'Regular Shift').replace(/[~|]/g, '-');
+              const room = (s.details || s.room || '').replace(/[~|]/g, '-');
+              const shiftId = (s.id || generateCompactId()).replace(/[~|]/g, '_');
+              return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${cCode}~${cleanTitle}`;
+            }).filter(Boolean).join('|');
+
+            const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
+
+            if (typeof QRious === 'undefined') {
+              container.innerHTML = `<p style="color:red;font-size:12px;">QR library failed to load.</p>`;
+              return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'w-full h-auto max-w-[250px] aspect-square mx-auto block';
+            container.appendChild(canvas);
+
+            new QRious({
+              element: canvas,
+              value: syncUrl,
+              size: 280,
+              level: 'L'
+            });
+          } catch (err) {
+            console.error("QR Error:", err);
+          }
+        }, 50);
+      }
+    }
+
+    function renderToast() {
+      const toastContainer = document.getElementById('toast-container');
+      if (state.toastMsg) {
+        toastContainer.innerHTML = `
+          <div class="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/50 text-emerald-400 px-6 py-3 rounded-full flex items-center gap-3 shadow-lg shadow-emerald-500/20 transition-opacity">
+            <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+            <span class="font-medium text-sm">${state.toastMsg}</span>
+          </div>
+        `;
+      } else {
+        toastContainer.innerHTML = '';
+      }
+    }
+
+    function render() {
+      const tabDash = document.getElementById('tab-dashboard');
+      const tabSched = document.getElementById('tab-schedule');
+      if(state.activeTab === 'dashboard') {
+        tabDash.className = "px-4 py-2 rounded-lg text-sm font-medium transition-all bg-slate-800 text-white shadow-md";
+        tabSched.className = "px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/50";
+      } else {
+        tabSched.className = "px-4 py-2 rounded-lg text-sm font-medium transition-all bg-slate-800 text-white shadow-md";
+        tabDash.className = "px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/50";
+      }
+
+      const mainContent = document.getElementById('main-content');
+      if(state.activeTab === 'dashboard') {
+        renderDashboard(mainContent);
+      } else {
+        renderSchedule(mainContent);
+      }
+
+      renderModals();
+      renderToast();
+      lucide.createIcons();
+    }
+
+    window.openAddModal = function() {
+      state.showAddModal = true;
+      render();
+    };
+
+    window.closeAddModal = function() {
+      state.showAddModal = false;
+      render();
+    };
+
+    window.onAddColorChange = function(select) {
+      const titleInput = document.getElementById('add-title');
+      if (!titleInput) return;
+      const color = select.value;
+      if (color === 'amber') titleInput.value = 'Surgery';
+      else if (color === 'red') titleInput.value = 'Urgent Care';
+      else if (color === 'violet') titleInput.value = 'Drop-Offs';
+      else if (color === 'blue') titleInput.value = 'Regular Shift';
+    };
+
+    window.onEditColorChange = function(select) {
+      const titleInput = document.getElementById('edit-title');
+      if (!titleInput) return;
+      const color = select.value;
+      if (color === 'amber') titleInput.value = 'Surgery';
+      else if (color === 'red') titleInput.value = 'Urgent Care';
+      else if (color === 'violet') titleInput.value = 'Drop-Offs';
+      else if (color === 'blue') titleInput.value = 'Regular Shift';
+    };
+
+    window.saveNewShift = function(e) {
+      e.preventDefault();
+      const sVal = document.getElementById('add-start').value;
+      const eVal = document.getElementById('add-end').value;
+
+      if (new Date(eVal) <= new Date(sVal)) {
+        alert('End time must be after start time.');
         return;
       }
-      favs.forEach(f => {
-        const ingredients = Array.isArray(f.ingredients) ? f.ingredients : [];
-        const instructions = Array.isArray(f.instructions) ? f.instructions : [];
 
-        const item = document.createElement('div');
-        item.className = 'card';
-        item.innerHTML = `
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div style="font-size:1.8rem; width:44px; text-align:center;">${esc(f.emoji || '🍽️')}</div>
-            <div style="flex:1;">
-              <div style="font-weight:700; font-size:0.9rem;">${esc(f.title)}</div>
-              <div style="font-size:0.75rem; color:#94a3b8;">${esc(f.time)} • Tap to view</div>
-            </div>
-            <button class="icon-btn" onclick="deleteFavorite(${f.id}, event)">🗑️</button>
-          </div>
-          <div class="recipe-details">
-            <strong>Ingredients:</strong>
-            <ul style="margin: 6px 0 10px 18px;">${ingredients.map(i => `<li>${esc(i)}</li>`).join('')}</ul>
-            <strong>Instructions:</strong>
-            <ol style="margin: 6px 0 10px 18px;">${instructions.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
-            ${f.chefTip ? `<div style="color:#6ee7b7; font-size:0.78rem;">💡 ${esc(f.chefTip)}</div>` : ''}
-          </div>
-        `;
-        item.onclick = (e) => {
-          if (e.target.tagName !== 'BUTTON') item.classList.toggle('expanded');
-        };
-        list.appendChild(item);
+      const chosenColor = document.getElementById('add-color').value;
+      const titleVal = document.getElementById('add-title').value.trim() || 'Regular Shift';
+      const detailsVal = document.getElementById('add-details').value.trim();
+      const sParts = sVal.split('T');
+
+      const newShift = {
+        id: generateCompactId(),
+        title: titleVal,
+        details: detailsVal,
+        colorCode: chosenColor,
+        start: sVal,
+        end: eVal,
+        date: sParts[0],
+        startTime: sParts[1],
+        endTime: eVal.split('T')[1],
+        room: detailsVal,
+        urgentCare: chosenColor === 'red'
+      };
+
+      state.shifts.push(newShift);
+      persist();
+
+      state.showAddModal = false;
+      state.toastMsg = `Added ${titleVal} to schedule!`;
+      render();
+
+      setTimeout(() => {
+        state.toastMsg = '';
+        render();
+      }, 3000);
+    };
+
+    window.exportCalendar = function() {
+      if (!state.shifts || state.shifts.length === 0) {
+        alert('No shifts available to export.');
+        return;
+      }
+
+      const nowUtc = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScheduleSync//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
+      
+      state.shifts.forEach(shift => {
+        const start = shift.start.replace(/[-:]/g, '') + '00';
+        const end = shift.end.replace(/[-:]/g, '') + '00';
+        
+        ics += 'BEGIN:VEVENT\r\n';
+        ics += `UID:${shift.id}@schedulesync\r\n`;
+        ics += `DTSTAMP:${nowUtc}\r\n`;
+        ics += `DTSTART:${start}\r\n`;
+        ics += `DTEND:${end}\r\n`;
+        ics += `SUMMARY:${shift.title}\r\n`;
+        ics += `DESCRIPTION:${shift.details || ''}\r\n`;
+        ics += 'STATUS:CONFIRMED\r\n';
+        ics += 'END:VEVENT\r\n';
       });
+      ics += 'END:VCALENDAR';
+
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `work-schedule.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    };
+
+    let recognition = null;
+    let pendingInterimText = '';
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      
+      recognition.onresult = (event) => {
+        pendingInterimText = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            state.transcript += (state.transcript ? ' ' : '') + event.results[i][0].transcript.trim();
+          } else {
+            pendingInterimText += event.results[i][0].transcript;
+          }
+        }
+        render();
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error !== 'no-speech') {
+          state.isListening = false;
+          render();
+        }
+      };
+
+      recognition.onend = () => {
+        if (pendingInterimText.trim()) {
+          state.transcript += (state.transcript ? ' ' : '') + pendingInterimText.trim();
+          pendingInterimText = '';
+        }
+        if (state.isListening) {
+          try {
+            recognition.start();
+            return;
+          } catch(e) {}
+        }
+        state.transcript = state.transcript.trim();
+        state.isListening = false;
+        render();
+      };
     }
 
-    function deleteFavorite(id, e) {
-      e.stopPropagation();
-      let favs = loadJSON('pantry_favs', []);
-      favs = favs.filter(f => f.id !== id);
-      localStorage.setItem('pantry_favs', JSON.stringify(favs));
-      renderFavorites();
-      showToast('Removed from Favorites');
-    }
+    window.toggleListening = function() {
+      if (state.isListening) {
+        state.isListening = false;
+        if (recognition) try { recognition.stop(); } catch(e) {}
+      } else {
+        if (recognition) {
+          try {
+            pendingInterimText = '';
+            state.isListening = true;
+            recognition.start();
+          } catch(e) {
+            state.isListening = false;
+          }
+        } else {
+          alert('Web Speech API is not supported in this browser.');
+        }
+      }
+      render();
+    };
 
-    window.addEventListener('DOMContentLoaded', () => {
-      initDailyTicker();
-      updateHomeMetrics();
-      renderDynamicSuggestions();
-    });
+    window.processTranscript = function() {
+      if (state.isListening) {
+        state.isListening = false;
+        if (recognition) try { recognition.stop(); } catch(e) {}
+      }
+
+      if (pendingInterimText.trim()) {
+        state.transcript += (state.transcript ? ' ' : '') + pendingInterimText.trim();
+        pendingInterimText = '';
+      }
+
+      if (!state.transcript.trim()) {
+        alert('Please dictate or paste your schedule into the box first.');
+        return;
+      }
+
+      state.isProcessing = true;
+      state.statusMsg = 'Processing Neural Feed locally...';
+      render();
+
+      setTimeout(() => {
+        try {
+          let text = state.transcript.toLowerCase();
+          
+          text = text.replace(/\bto\b/g, '-');
+          text = text.replace(/\btill\b/g, '-');
+          text = text.replace(/\buntil\b/g, '-');
+          text = text.replace(/\bthru\b/g, '-');
+          text = text.replace(/\b(?:room|rm|no|number)\s+for\b/g, 'room 4');
+          text = text.replace(/\bwon\b/g, '1');
+          text = text.replace(/\bone\b/g, '1');
+          text = text.replace(/\btoo\b/g, '2');
+          text = text.replace(/\btwo\b/g, '2');
+          text = text.replace(/\bthree\b/g, '3');
+          text = text.replace(/\bfour\b/g, '4');
+          text = text.replace(/\bfive\b/g, '5');
+
+          const dateRegex = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+the)?\s+\d{1,2}(?:st|nd|rd|th)?|(?:on\s+)?(?:the\s+)?\d{1,2}(?:st|nd|rd|th))\b/gi;
+
+          let matches = [...text.matchAll(dateRegex)];
+          let chunks = [];
+          
+          const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          if (rawLines.length > 1) {
+            chunks = rawLines;
+          } else if (matches.length > 0) {
+            if (matches[0].index > 0) {
+              let preText = text.substring(0, matches[0].index).trim();
+              if (preText.length > 5) chunks.push(preText);
+            }
+            for (let i = 0; i < matches.length; i++) {
+              let start = matches[i].index;
+              let end = (i + 1 < matches.length) ? matches[i+1].index : text.length;
+              chunks.push(text.substring(start, end));
+            }
+          } else {
+            chunks.push(text);
+          }
+
+          const currentYear = parseInt(state.year) || new Date().getFullYear();
+          let currentMonth = parseInt(state.month) - 1;
+          let newShiftsCount = 0;
+          let skippedCount = 0;
+
+          chunks.forEach(chunk => {
+            chunk = chunk.trim();
+            if (!chunk) return;
+
+            let day = null;
+            
+            const monthMatch = chunk.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
+            if (monthMatch) {
+              const mStr = monthMatch[1].toLowerCase();
+              const monthMap = { jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3, may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7, sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11 };
+              if (monthMap[mStr] !== undefined) currentMonth = monthMap[mStr];
+            } else {
+               const numMatch = chunk.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+               if (numMatch) currentMonth = parseInt(numMatch[1]) - 1;
+            }
+
+            const numMatch = chunk.match(/\b\d{1,2}[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?\b/);
+            const ordinalMatch = chunk.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
+            const plainDayMatch = chunk.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\b/i);
+
+            if (numMatch) day = parseInt(numMatch[1]);
+            else if (ordinalMatch) day = parseInt(ordinalMatch[1]);
+            else if (plainDayMatch) day = parseInt(plainDayMatch[1]);
+
+            const timeMatch = chunk.match(/\b(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\b/i);
+
+            if (!timeMatch) {
+              if (day !== null || chunk.length > 8) skippedCount++;
+              return;
+            }
+            
+            if (day === null) day = new Date().getDate();
+
+            let startH = parseInt(timeMatch[1], 10);
+            let startM = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+            let startPeriod = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+            
+            let endH = parseInt(timeMatch[4], 10);
+            let endM = timeMatch[5] ? parseInt(timeMatch[5], 10) : 0;
+            let endPeriod = timeMatch[6] ? timeMatch[6].toLowerCase() : null;
+
+            if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM) || isNaN(day)) {
+              skippedCount++;
+              return;
+            }
+
+            const isNightShift = /\b(?:night|overnight|graveyard)\b/i.test(chunk);
+
+            if (isNightShift) {
+              if (!startPeriod && startH >= 1 && startH <= 11) startPeriod = 'pm';
+              if (!endPeriod && endH >= 1 && endH <= 11) endPeriod = 'am';
+            } else {
+              if (!startPeriod) {
+                if (startH >= 6 && startH <= 11) startPeriod = 'am';
+                else if (startH === 12 || startH < 6) startPeriod = 'pm';
+              }
+              if (!endPeriod) {
+                if (endH >= 1 && endH <= 11) endPeriod = 'pm';
+                else if (endH === 12) endPeriod = 'pm';
+              }
+            }
+            
+            if (startPeriod && startPeriod.startsWith('p') && startH < 12) startH += 12;
+            if (startPeriod && startPeriod.startsWith('a') && startH === 12) startH = 0;
+            
+            if (endPeriod && endPeriod.startsWith('p') && endH < 12) endH += 12;
+            if (endPeriod && endPeriod.startsWith('a') && endH === 12) endH = 0;
+
+            let endYear = currentYear;
+            let endMonth = currentMonth;
+            let endDay = day;
+
+            if ((endH * 60 + endM) < (startH * 60 + startM)) {
+              const nextDayDate = new Date(currentYear, currentMonth, day + 1);
+              endYear = nextDayDate.getFullYear();
+              endMonth = nextDayDate.getMonth();
+              endDay = nextDayDate.getDate();
+            }
+
+            let details = '';
+            const roomMatch = chunk.match(/\broom\s+([a-z0-9]+)\b/i);
+            const isoMatch = chunk.match(/\biso\b/i);
+            const dentalMatch = chunk.match(/\bdental\b/i);
+            const frontDeskMatch = chunk.match(/\bfront desk\b/i);
+            
+            if (roomMatch) details = 'Room ' + roomMatch[1].toUpperCase();
+            else if (isoMatch) details = 'ISO';
+            else if (dentalMatch) details = 'Dental';
+            else if (frontDeskMatch) details = 'Front Desk';
+
+            let colorCode = 'blue';
+            let title = 'Regular Shift';
+            
+            if (chunk.match(/\b(urgent care|urgent|uc)\b/)) {
+              colorCode = 'red';
+              title = 'Urgent Care';
+            } else if (chunk.match(/\bsurgery\b/)) {
+              colorCode = 'amber';
+              title = 'Surgery';
+            } else if (chunk.match(/\bdrop(?:\s*off|s)?\b/)) {
+              colorCode = 'violet';
+              title = 'Drop-Offs';
+            } else if (chunk.match(/\bexam(s)?\b/)) {
+              title = 'Exams';
+            }
+
+            const pad = n => n.toString().padStart(2, '0');
+            const dateStr = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}`;
+            const sTimeStr = `${pad(startH)}:${pad(startM)}`;
+            const eTimeStr = `${pad(endH)}:${pad(endM)}`;
+            const startIso = `${dateStr}T${sTimeStr}`;
+            const endIso = `${endYear}-${pad(endMonth + 1)}-${pad(endDay)}T${eTimeStr}`;
+
+            state.shifts.push({
+              id: generateCompactId(),
+              title: title,
+              details: details,
+              colorCode: colorCode,
+              start: startIso,
+              end: endIso,
+              date: dateStr,
+              startTime: sTimeStr,
+              endTime: eTimeStr,
+              room: details,
+              urgentCare: colorCode === 'red'
+            });
+            newShiftsCount++;
+          });
+
+          state.transcript = '';
+          state.isProcessing = false;
+          state.statusMsg = '';
+          
+          let toast = `Successfully added ${newShiftsCount} shift${newShiftsCount === 1 ? '' : 's'}.`;
+          if (skippedCount > 0) toast += ` (${skippedCount} skipped: missing hours)`;
+          state.toastMsg = toast;
+          
+          persist();
+          render();
+
+          setTimeout(() => {
+            state.toastMsg = '';
+            render();
+          }, 4500);
+
+        } catch(err) {
+          state.isProcessing = false;
+          state.statusMsg = '';
+          state.toastMsg = 'Error processing schedule feed.';
+          render();
+        }
+      }, 400);
+    };
+
+    window.openQrModal = function() {
+      state.showQrModal = true;
+      render();
+    };
+
+    window.closeQrModal = function() {
+      state.showQrModal = false;
+      render();
+    };
+
+    window.editShift = function(id) {
+      state.editingShift = state.shifts.find(s => s.id === id);
+      render();
+    };
+
+    window.closeEditModal = function() {
+      state.editingShift = null;
+      render();
+    };
+
+    window.removeShift = function(id) {
+      state.shifts = state.shifts.filter(s => s.id !== id);
+      persist();
+      render();
+    };
+
+    window.saveEditedShift = function(e) {
+      e.preventDefault();
+      if (!state.editingShift) return;
+      
+      const sVal = document.getElementById('edit-start').value;
+      const eVal = document.getElementById('edit-end').value;
+
+      if (new Date(eVal) <= new Date(sVal)) {
+        alert('End time must be after start time.');
+        return;
+      }
+      
+      const chosenColor = document.getElementById('edit-color').value;
+      state.editingShift.colorCode = chosenColor;
+      state.editingShift.title = document.getElementById('edit-title').value;
+      state.editingShift.details = document.getElementById('edit-details').value;
+      state.editingShift.start = sVal;
+      state.editingShift.end = eVal;
+
+      const sParts = sVal.split('T');
+      state.editingShift.date = sParts[0];
+      state.editingShift.startTime = sParts[1];
+      state.editingShift.endTime = eVal.split('T')[1];
+      
+      state.shifts = state.shifts.map(s => s.id === state.editingShift.id ? state.editingShift : s);
+      persist();
+      
+      state.editingShift = null;
+      render();
+    };
+
+    render();
   </script>
 </body>
 </html>
