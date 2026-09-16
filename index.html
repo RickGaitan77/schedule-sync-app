@@ -101,6 +101,7 @@
       month: (new Date().getMonth() + 1).toString(),
       year: new Date().getFullYear().toString(),
       showQrModal: false,
+      showAddModal: false,
       editingShift: null,
       toastMsg: '',
     };
@@ -152,7 +153,6 @@
       return { y, m, d, h, min };
     }
 
-    // Live Sync Receiver (Handles Initial Load, Hashchange, and Page Wakeup)
     function processSyncHash() {
       const currentHash = window.location.hash;
       if (!currentHash || !currentHash.startsWith('#sync=')) return;
@@ -199,7 +199,6 @@
         }).filter(Boolean);
 
         if (restored.length > 0) {
-          // Replace phone schedule entirely with PC broadcast
           state.shifts = restored;
           persist();
           state.toastMsg = `Synced ${restored.length} shift${restored.length === 1 ? '' : 's'} from PC!`;
@@ -296,10 +295,10 @@
           </div>
           
           <div class="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 shrink-0 pl-2">
-            <button onclick="editShift('${shift.id}')" class="p-2 sm:p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-400 transition-all shadow-sm">
+            <button onclick="editShift('${shift.id}')" class="p-2 sm:p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-400 transition-all shadow-sm" title="Edit Shift">
               <i data-lucide="edit-2" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
             </button>
-            <button onclick="removeShift('${shift.id}')" class="p-2 sm:p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-red-400 transition-all shadow-sm">
+            <button onclick="removeShift('${shift.id}')" class="p-2 sm:p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-red-400 transition-all shadow-sm" title="Delete Shift">
               <i data-lucide="trash-2" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
             </button>
           </div>
@@ -341,7 +340,7 @@
         shiftsHtml = `
           <div class="min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-10">
             <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
-            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Dictate on PC or scan QR.</p>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Tap "+ Add Shift" or dictate on PC.</p>
           </div>
         `;
       } else {
@@ -358,7 +357,7 @@
           
           <!-- 1. Schedule Matrix (Visible on phone & PC) -->
           <div class="col-span-1 lg:col-span-8 lg:row-span-6 bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 rounded-3xl flex flex-col p-1 shadow-2xl relative overflow-hidden min-h-[340px] shrink-0 lg:shrink">
-            <div class="p-3 sm:p-4 border-b border-slate-800/50 flex justify-between items-center gap-2 shrink-0">
+            <div class="p-3 sm:p-4 border-b border-slate-800/50 flex flex-wrap justify-between items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-mono uppercase tracking-widest text-slate-400">${sectionTitle}</h2>
                 <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
@@ -366,14 +365,26 @@
                 </span>
               </div>
               
-              <button 
-                onclick="exportCalendar()" 
-                class="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 hover:bg-emerald-500/30 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-lg shadow-emerald-950/40 ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
-                title="Add shifts directly to Apple Calendar"
-              >
-                <i data-lucide="calendar-plus" class="w-4 h-4 text-emerald-400"></i>
-                <span>Export to Calendar</span>
-              </button>
+              <!-- Direct Action Buttons (Add Shift + Export) -->
+              <div class="flex items-center gap-2">
+                <button 
+                  onclick="openAddModal()" 
+                  class="flex items-center gap-1.5 px-3 py-2 bg-slate-800/90 border border-slate-700 hover:border-cyan-400/50 rounded-xl text-cyan-300 hover:bg-slate-800 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-sm"
+                  title="Manually add a shift"
+                >
+                  <i data-lucide="plus" class="w-4 h-4 text-cyan-400"></i>
+                  <span>Add Shift</span>
+                </button>
+
+                <button 
+                  onclick="exportCalendar()" 
+                  class="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 hover:bg-emerald-500/30 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-lg shadow-emerald-950/40 ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
+                  title="Add shifts directly to Apple Calendar"
+                >
+                  <i data-lucide="calendar-plus" class="w-4 h-4 text-emerald-400"></i>
+                  <span>Export to Calendar</span>
+                </button>
+              </div>
             </div>
             
             <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[520px] lg:max-h-none scroll-hide">
@@ -581,6 +592,68 @@
         `;
       }
 
+      // 1. ADD SHIFT MODAL
+      if (state.showAddModal) {
+        const now = new Date();
+        const yStr = now.getFullYear();
+        const mStr = String(now.getMonth() + 1).padStart(2, '0');
+        const dStr = String(now.getDate()).padStart(2, '0');
+        const defaultStart = `${yStr}-${mStr}-${dStr}T07:30`;
+        const defaultEnd = `${yStr}-${mStr}-${dStr}T17:30`;
+
+        html += `
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAddModal()"></div>
+            <div class="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="flex items-center justify-between p-4 border-b border-slate-800">
+                <h3 class="text-lg font-medium text-white flex items-center gap-2">
+                  <i data-lucide="plus-circle" class="w-4 h-4 text-cyan-400"></i> Add New Shift
+                </h3>
+                <button onclick="closeAddModal()" class="text-slate-500 hover:text-white transition-colors">
+                  <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+              </div>
+              <form onsubmit="saveNewShift(event)" class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Shift Type & Color</label>
+                    <select id="add-color" onchange="onAddColorChange(this)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm font-medium">
+                      <option value="blue">Regular (Blue)</option>
+                      <option value="amber">Surgery (Amber)</option>
+                      <option value="red">Urgent Care (Red)</option>
+                      <option value="violet">Drop-Off (Purple)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
+                    <input type="text" id="add-title" value="Regular Shift" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm" required>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Details (Room, Location)</label>
+                  <input type="text" id="add-details" placeholder="e.g. Room 2, Dental" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Start Time</label>
+                    <input type="datetime-local" id="add-start" value="${defaultStart}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm" required>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">End Time</label>
+                    <input type="datetime-local" id="add-end" value="${defaultEnd}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500/50 text-sm" required>
+                  </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                  <button type="button" onclick="closeAddModal()" class="px-5 py-2.5 rounded-xl text-slate-400 font-medium hover:text-white hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button type="submit" class="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-colors">Add to Schedule</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. EDIT SHIFT MODAL
       if (state.editingShift) {
         const shift = state.editingShift;
         const startVal = shift.start ? shift.start.slice(0, 16) : `${shift.date}T${shift.startTime}`;
@@ -600,17 +673,17 @@
               <form onsubmit="saveEditedShift(event)" class="p-6 space-y-4">
                 <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
-                    <input type="text" id="edit-title" value="${shift.title.replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
-                  </div>
-                  <div>
                     <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Shift Type & Color</label>
-                    <select id="edit-color" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm font-medium">
+                    <select id="edit-color" onchange="onEditColorChange(this)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm font-medium">
                       <option value="blue" ${shift.colorCode === 'blue' ? 'selected' : ''}>Regular (Blue)</option>
                       <option value="amber" ${shift.colorCode === 'amber' ? 'selected' : ''}>Surgery (Amber)</option>
                       <option value="red" ${shift.colorCode === 'red' ? 'selected' : ''}>Urgent Care (Red)</option>
                       <option value="violet" ${shift.colorCode === 'violet' ? 'selected' : ''}>Drop-Off (Purple)</option>
                     </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
+                    <input type="text" id="edit-title" value="${shift.title.replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
                   </div>
                 </div>
                 <div>
@@ -728,6 +801,78 @@
       renderToast();
       lucide.createIcons();
     }
+
+    window.openAddModal = function() {
+      state.showAddModal = true;
+      render();
+    };
+
+    window.closeAddModal = function() {
+      state.showAddModal = false;
+      render();
+    };
+
+    window.onAddColorChange = function(select) {
+      const titleInput = document.getElementById('add-title');
+      if (!titleInput) return;
+      const color = select.value;
+      if (color === 'amber') titleInput.value = 'Surgery';
+      else if (color === 'red') titleInput.value = 'Urgent Care';
+      else if (color === 'violet') titleInput.value = 'Drop-Offs';
+      else if (color === 'blue') titleInput.value = 'Regular Shift';
+    };
+
+    window.onEditColorChange = function(select) {
+      const titleInput = document.getElementById('edit-title');
+      if (!titleInput) return;
+      const color = select.value;
+      if (color === 'amber') titleInput.value = 'Surgery';
+      else if (color === 'red') titleInput.value = 'Urgent Care';
+      else if (color === 'violet') titleInput.value = 'Drop-Offs';
+      else if (color === 'blue') titleInput.value = 'Regular Shift';
+    };
+
+    window.saveNewShift = function(e) {
+      e.preventDefault();
+      const sVal = document.getElementById('add-start').value;
+      const eVal = document.getElementById('add-end').value;
+
+      if (new Date(eVal) <= new Date(sVal)) {
+        alert('End time must be after start time.');
+        return;
+      }
+
+      const chosenColor = document.getElementById('add-color').value;
+      const titleVal = document.getElementById('add-title').value.trim() || 'Regular Shift';
+      const detailsVal = document.getElementById('add-details').value.trim();
+      const sParts = sVal.split('T');
+
+      const newShift = {
+        id: generateCompactId(),
+        title: titleVal,
+        details: detailsVal,
+        colorCode: chosenColor,
+        start: sVal,
+        end: eVal,
+        date: sParts[0],
+        startTime: sParts[1],
+        endTime: eVal.split('T')[1],
+        room: detailsVal,
+        urgentCare: chosenColor === 'red'
+      };
+
+      state.shifts.push(newShift);
+      persist();
+
+      state.showAddModal = false;
+      state.toastMsg = `Added ${titleVal} to schedule!`;
+      render();
+
+      setTimeout(() => {
+        state.toastMsg = '';
+        render();
+      }, 3000);
+    };
 
     window.exportCalendar = function() {
       if (!state.shifts || state.shifts.length === 0) {
@@ -872,7 +1017,6 @@
           let matches = [...text.matchAll(dateRegex)];
           let chunks = [];
           
-          // Split by line if multiple lines exist, otherwise split by matched date markers
           const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
           if (rawLines.length > 1) {
             chunks = rawLines;
@@ -919,7 +1063,6 @@
             else if (ordinalMatch) day = parseInt(ordinalMatch[1]);
             else if (plainDayMatch) day = parseInt(plainDayMatch[1]);
 
-            // Matches "7:30 - 4:30", "7:30 - 4", "7 - 4", and colon-less "730 - 430"
             const timeMatch = chunk.match(/\b(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\b/i);
 
             if (!timeMatch) {
