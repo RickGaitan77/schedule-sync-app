@@ -152,24 +152,33 @@
       return { y, m, d, h, min };
     }
 
-    // Auto-import when scanned via iPhone Camera
-    const hash = window.location.hash;
-    if (hash.startsWith('#sync=')) {
+    // Live Sync Receiver (Handles Initial Load, Hashchange, and Page Wakeup)
+    function processSyncHash() {
+      const currentHash = window.location.hash;
+      if (!currentHash || !currentHash.startsWith('#sync=')) return;
+
       try {
-        const encodedData = hash.substring(6);
+        const encodedData = currentHash.substring(6);
         const decodedData = decodeURIComponent(encodedData);
         const shiftStrings = decodedData.split('|');
 
         const restored = shiftStrings.map(str => {
           if (!str) return null;
           const parts = str.split('~');
-          let id, dateStr, sTime, eTime, room, isUrgent;
-          
-          if (parts.length >= 6) {
-            [id, dateStr, sTime, eTime, room, isUrgent] = parts;
+          let id, dateStr, sTime, eTime, room, colorCode, title;
+
+          if (parts.length >= 7) {
+            [id, dateStr, sTime, eTime, room, colorCode, title] = parts;
+          } else if (parts.length === 6) {
+            const isUrgent = parts[5];
+            [id, dateStr, sTime, eTime, room] = parts;
+            colorCode = isUrgent === '1' ? 'red' : 'blue';
+            title = isUrgent === '1' ? 'Urgent Care' : 'Regular Shift';
           } else if (parts.length === 5) {
-            [dateStr, sTime, eTime, room, isUrgent] = parts;
+            [dateStr, sTime, eTime, room] = parts;
             id = generateCompactId();
+            colorCode = 'blue';
+            title = 'Regular Shift';
           } else {
             return null;
           }
@@ -178,30 +187,39 @@
             id: id || generateCompactId(),
             start: dateStr + 'T' + sTime,
             end: dateStr + 'T' + eTime,
-            title: isUrgent === '1' ? 'Urgent Care' : 'Regular Shift',
+            title: title || (colorCode === 'red' ? 'Urgent Care' : colorCode === 'amber' ? 'Surgery' : 'Regular Shift'),
             details: room || '',
-            colorCode: isUrgent === '1' ? 'red' : 'blue',
+            colorCode: colorCode || 'blue',
             date: dateStr,
             startTime: sTime,
             endTime: eTime,
             room: room || '',
-            urgentCare: isUrgent === '1'
+            urgentCare: colorCode === 'red'
           };
         }).filter(Boolean);
 
         if (restored.length > 0) {
-          const map = new Map(state.shifts.map(s => [s.id, s]));
-          for (const s of restored) map.set(s.id, s);
-          state.shifts = [...map.values()];
+          // Replace phone schedule entirely with PC broadcast
+          state.shifts = restored;
           persist();
-          state.toastMsg = `Synced ${restored.length} shifts to your device!`;
+          state.toastMsg = `Synced ${restored.length} shift${restored.length === 1 ? '' : 's'} from PC!`;
+        } else {
+          state.shifts = [];
+          persist();
+          state.toastMsg = 'Schedule cleared from PC.';
         }
+
         window.history.replaceState(null, '', window.location.pathname);
+        render();
         setTimeout(() => { state.toastMsg = ''; render(); }, 4000);
       } catch (e) {
         console.error('Failed to parse schedule QR code:', e);
       }
     }
+
+    window.addEventListener('hashchange', processSyncHash);
+    window.addEventListener('pageshow', processSyncHash);
+    processSyncHash();
 
     function formatTime(rawStr) {
       if (!rawStr) return '';
@@ -323,7 +341,7 @@
         shiftsHtml = `
           <div class="min-h-[160px] flex flex-col items-center justify-center text-slate-500 py-10">
             <i data-lucide="check-circle-2" class="w-10 h-10 mb-2 opacity-20"></i>
-            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Scan from PC to begin.</p>
+            <p class="font-mono text-xs uppercase tracking-widest text-slate-500 text-center">No shifts entered yet. Dictate on PC or scan QR.</p>
           </div>
         `;
       } else {
@@ -348,7 +366,6 @@
                 </span>
               </div>
               
-              <!-- One-Click Native Apple Calendar Export Button -->
               <button 
                 onclick="exportCalendar()" 
                 class="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 hover:bg-emerald-500/30 active:scale-95 text-xs font-mono uppercase font-bold transition-all shadow-lg shadow-emerald-950/40 ${state.shifts.length === 0 ? 'opacity-40 pointer-events-none' : ''}"
@@ -359,7 +376,7 @@
               </button>
             </div>
             
-            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[500px] lg:max-h-none scroll-hide">
+            <div class="flex-1 p-2 sm:p-4 space-y-2 overflow-y-auto max-h-[520px] lg:max-h-none scroll-hide">
               ${shiftsHtml}
             </div>
           </div>
@@ -581,13 +598,24 @@
                 </button>
               </div>
               <form onsubmit="saveEditedShift(event)" class="p-6 space-y-4">
-                <div>
-                  <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
-                  <input type="text" id="edit-title" value="${shift.title.replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50" required>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Title</label>
+                    <input type="text" id="edit-title" value="${shift.title.replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm" required>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Shift Type & Color</label>
+                    <select id="edit-color" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm font-medium">
+                      <option value="blue" ${shift.colorCode === 'blue' ? 'selected' : ''}>Regular (Blue)</option>
+                      <option value="amber" ${shift.colorCode === 'amber' ? 'selected' : ''}>Surgery (Amber)</option>
+                      <option value="red" ${shift.colorCode === 'red' ? 'selected' : ''}>Urgent Care (Red)</option>
+                      <option value="violet" ${shift.colorCode === 'violet' ? 'selected' : ''}>Drop-Off (Purple)</option>
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label class="block text-[10px] font-mono uppercase text-slate-500 mb-1">Details (Room, Location)</label>
-                  <input type="text" id="edit-details" value="${(shift.details || shift.room || '').replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50">
+                  <input type="text" id="edit-details" value="${(shift.details || shift.room || '').replace(/"/g, '&quot;')}" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500/50 text-sm">
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                   <div>
@@ -617,11 +645,6 @@
             if (!container) return;
             container.innerHTML = '';
 
-            if (!state.shifts || state.shifts.length === 0) {
-              container.innerHTML = `<p class="text-xs text-slate-500 py-4 text-center">No shifts to encode.</p>`;
-              return;
-            }
-
             const compactString = state.shifts.map(s => {
               let datePart = s.date || '';
               let startTime = s.startTime || '';
@@ -638,10 +661,11 @@
 
               if (!datePart || !startTime || !endTime) return null;
 
-              const isUrgent = (s.colorCode === 'red' || (s.title && s.title.includes('Urgent')) || s.urgentCare) ? '1' : '0';
+              const cCode = s.colorCode || 'blue';
+              const cleanTitle = (s.title || 'Regular Shift').replace(/[~|]/g, '-');
               const room = (s.details || s.room || '').replace(/[~|]/g, '-');
               const shiftId = (s.id || generateCompactId()).replace(/[~|]/g, '_');
-              return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${isUrgent}`;
+              return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${cCode}~${cleanTitle}`;
             }).filter(Boolean).join('|');
 
             const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
@@ -848,9 +872,11 @@
           let matches = [...text.matchAll(dateRegex)];
           let chunks = [];
           
-          if (matches.length === 0) {
-            chunks.push(text);
-          } else {
+          // Split by line if multiple lines exist, otherwise split by matched date markers
+          const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          if (rawLines.length > 1) {
+            chunks = rawLines;
+          } else if (matches.length > 0) {
             if (matches[0].index > 0) {
               let preText = text.substring(0, matches[0].index).trim();
               if (preText.length > 5) chunks.push(preText);
@@ -860,6 +886,8 @@
               let end = (i + 1 < matches.length) ? matches[i+1].index : text.length;
               chunks.push(text.substring(start, end));
             }
+          } else {
+            chunks.push(text);
           }
 
           const currentYear = parseInt(state.year) || new Date().getFullYear();
@@ -891,7 +919,8 @@
             else if (ordinalMatch) day = parseInt(ordinalMatch[1]);
             else if (plainDayMatch) day = parseInt(plainDayMatch[1]);
 
-            const timeMatch = chunk.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/i);
+            // Matches "7:30 - 4:30", "7:30 - 4", "7 - 4", and colon-less "730 - 430"
+            const timeMatch = chunk.match(/\b(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\b/i);
 
             if (!timeMatch) {
               if (day !== null || chunk.length > 8) skippedCount++;
@@ -1022,10 +1051,6 @@
     };
 
     window.openQrModal = function() {
-      if (!state.shifts || state.shifts.length === 0) {
-        alert('No shifts found in your schedule. Please enter shifts before syncing.');
-        return;
-      }
       state.showQrModal = true;
       render();
     };
@@ -1053,7 +1078,7 @@
 
     window.saveEditedShift = function(e) {
       e.preventDefault();
-      if(!state.editingShift) return;
+      if (!state.editingShift) return;
       
       const sVal = document.getElementById('edit-start').value;
       const eVal = document.getElementById('edit-end').value;
@@ -1063,10 +1088,17 @@
         return;
       }
       
+      const chosenColor = document.getElementById('edit-color').value;
+      state.editingShift.colorCode = chosenColor;
       state.editingShift.title = document.getElementById('edit-title').value;
       state.editingShift.details = document.getElementById('edit-details').value;
       state.editingShift.start = sVal;
       state.editingShift.end = eVal;
+
+      const sParts = sVal.split('T');
+      state.editingShift.date = sParts[0];
+      state.editingShift.startTime = sParts[1];
+      state.editingShift.endTime = eVal.split('T')[1];
       
       state.shifts = state.shifts.map(s => s.id === state.editingShift.id ? state.editingShift : s);
       persist();
