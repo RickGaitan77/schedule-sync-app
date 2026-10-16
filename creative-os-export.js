@@ -35,19 +35,36 @@
   function build(shifts, metadata) {
     if (!Array.isArray(shifts) || shifts.length > 10000) throw new Error('Invalid shift count.');
     const ids = new Set();
-    const rows = shifts.map(original => {
-      // Older saved rows can contain room/urgentCare without their newer aliases.
-      const s = {...original, details: original.details ?? original.room ?? '',
-        colorCode: original.colorCode ?? (original.urgentCare ? 'red' : 'blue')};
-      for (const [key, limit] of [['id', 200], ['title', 500], ['details', 4000], ['colorCode', 40]]) {
-        if (typeof s[key] !== 'string' || s[key].length > limit || (['id', 'title'].includes(key) && !s[key].trim()))
-          throw new Error('Missing or invalid shift ' + key + '. No IDs are generated during export.');
+    const rows = shifts.map((original, index) => {
+      let field = 'shift';
+      try {
+        // Older saved rows can contain room/urgentCare without their newer aliases.
+        const s = {...original, details: original.details ?? original.room ?? '',
+          colorCode: original.colorCode ?? (original.urgentCare ? 'red' : 'blue')};
+        for (const [key, limit] of [['id', 200], ['title', 500], ['details', 4000], ['colorCode', 40]]) {
+          field = key;
+          if (typeof s[key] !== 'string' || s[key].length > limit || (['id', 'title'].includes(key) && !s[key].trim()))
+            throw new Error('Missing or invalid shift ' + key + '. No IDs are generated during export.');
+        }
+        field = 'id';
+        if (ids.has(s.id)) throw new Error('Duplicate shift ID. Resolve it in Schedule Sync first.');
+        ids.add(s.id);
+        field = 'start';
+        if (typeof s.start !== 'string')
+          throw new Error('End must follow start; include the actual end date for overnight work.');
+        field = 'end';
+        if (typeof s.end !== 'string')
+          throw new Error('End must follow start; include the actual end date for overnight work.');
+        const end = wall(s.end, metadata.source_timezone);
+        field = 'start';
+        const start = wall(s.start, metadata.source_timezone);
+        field = 'interval (start/end)';
+        if (end <= start)
+          throw new Error('End must follow start; include the actual end date for overnight work.');
+        return {id: s.id, type: 'work_shift', title: s.title, details: s.details, colorCode: s.colorCode, start: s.start, end: s.end};
+      } catch (err) {
+        throw new Error(`\nShift index: ${index} (item ${index + 1})\nShift: ${JSON.stringify(original?.title)}\nID: ${JSON.stringify(original?.id)}\nStart: ${JSON.stringify(original?.start)}\nEnd: ${JSON.stringify(original?.end)}\nProblem: ${field} — ${err.message}`);
       }
-      if (ids.has(s.id)) throw new Error('Duplicate shift ID. Resolve it in Schedule Sync first.');
-      ids.add(s.id);
-      if (typeof s.start !== 'string' || typeof s.end !== 'string' || wall(s.end, metadata.source_timezone) <= wall(s.start, metadata.source_timezone))
-        throw new Error('End must follow start; include the actual end date for overnight work.');
-      return {id: s.id, type: 'work_shift', title: s.title, details: s.details, colorCode: s.colorCode, start: s.start, end: s.end};
     });
     // Validate the timezone even for a complete empty snapshot.
     new Intl.DateTimeFormat('en-US', {timeZone: metadata.source_timezone}).format();
