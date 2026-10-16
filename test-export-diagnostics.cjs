@@ -41,7 +41,12 @@ test('existing alert displays the diagnostic and failure makes no browser writes
   const forbidden = () => assert.fail('Invalid export must not write browser data or download');
   const sandbox = {window: {}, state: {shifts: schedule}, CreativeOSExport: {build}, prompt: () => 'America/Chicago',
     localStorage: {getItem: () => metadata.source_instance_id, setItem: forbidden}, crypto: {randomUUID: () => metadata.snapshot_id},
-    URL: {createObjectURL: forbidden}, alert: message => alerts.push(message)};
+    URL: {createObjectURL: forbidden}, alert: message => alerts.push(message),
+    CreativeOSProblem: {show: (error, getShifts) => {
+      assert.equal(error.problemShift.id, 'good-first');
+      assert.equal(getShifts(), schedule);
+      alerts.push('Creative OS export failed: ' + error.message);
+    }}};
   vm.runInNewContext(handler, sandbox);
   sandbox.window.exportCreativeOS();
   assert.equal(alerts.length, 1);

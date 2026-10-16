@@ -93,6 +93,7 @@
   <div id="toast-container"></div>
 
   <script src="creative-os-export.js"></script>
+  <script src="creative-os-problem.js"></script>
   <script>
     let state = {
       shifts: [],
@@ -893,7 +894,10 @@
         const a = document.createElement('a'); a.href = url; a.download = 'schedule-sync-creative-os.json';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } catch (err) { alert('Creative OS export failed: ' + err.message); }
+      } catch (err) {
+        if (err.problemShift) CreativeOSProblem.show(err, () => state.shifts, id => window.editShift(id));
+        else alert('Creative OS export failed: ' + err.message);
+      }
     };
 
     window.exportCalendar = function() {

@@ -63,7 +63,10 @@
           throw new Error('End must follow start; include the actual end date for overnight work.');
         return {id: s.id, type: 'work_shift', title: s.title, details: s.details, colorCode: s.colorCode, start: s.start, end: s.end};
       } catch (err) {
-        throw new Error(`\nShift index: ${index} (item ${index + 1})\nShift: ${JSON.stringify(original?.title)}\nID: ${JSON.stringify(original?.id)}\nStart: ${JSON.stringify(original?.start)}\nEnd: ${JSON.stringify(original?.end)}\nProblem: ${field} — ${err.message}`);
+        const failure = new Error(`\nShift index: ${index} (item ${index + 1})\nShift: ${JSON.stringify(original?.title)}\nID: ${JSON.stringify(original?.id)}\nStart: ${JSON.stringify(original?.start)}\nEnd: ${JSON.stringify(original?.end)}\nProblem: ${field} — ${err.message}`);
+        // UI-only context; never part of the exported JSON or persisted schedule.
+        failure.problemShift = {id: original?.id, record: original};
+        throw failure;
       }
     });
     // Validate the timezone even for a complete empty snapshot.
