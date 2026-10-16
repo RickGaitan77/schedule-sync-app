@@ -81,6 +81,9 @@
       </div>
     </header>
 
+    <div class="px-4 py-2 flex justify-end">
+      <button onclick="exportCreativeOS()" class="px-3 py-2 rounded-lg text-sm bg-slate-800 text-cyan-300">Export for Creative OS</button>
+    </div>
     <main class="flex-1 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-6" id="main-content">
       <!-- Content renders here -->
     </main>
@@ -89,6 +92,7 @@
   <div id="modal-container"></div>
   <div id="toast-container"></div>
 
+  <script src="creative-os-export.js"></script>
   <script>
     let state = {
       shifts: [],
@@ -872,6 +876,24 @@
         state.toastMsg = '';
         render();
       }, 3000);
+    };
+
+    window.exportCreativeOS = function() {
+      const zone = prompt('Timezone for all shifts in this browser (IANA name). Confirm this is your current schedule before exporting.', 'America/Chicago');
+      if (zone === null) return;
+      if (state.shifts.length === 0 && !confirm('Export a complete EMPTY schedule? Importing it removes this dataset’s previously imported shifts from Creative OS.')) return;
+      try {
+        const key = 'schedule_sync_creative_os_instance_v1';
+        const instance = localStorage.getItem(key) || crypto.randomUUID();
+        const snapshot = CreativeOSExport.build(state.shifts, {source_instance_id: instance,
+          snapshot_id: crypto.randomUUID(), exported_at: new Date().toISOString(), source_timezone: zone.trim()});
+        // Persist only bridge identity metadata; never rewrite shifts during export.
+        localStorage.setItem(key, instance);
+        const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], {type: 'application/json'}));
+        const a = document.createElement('a'); a.href = url; a.download = 'schedule-sync-creative-os.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) { alert('Creative OS export failed: ' + err.message); }
     };
 
     window.exportCalendar = function() {
