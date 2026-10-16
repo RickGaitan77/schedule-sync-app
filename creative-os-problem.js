@@ -1,4 +1,4 @@
-/* Read-only export diagnostics. Opening/dismissing never persists a shift. */
+/* Read-only diagnostics with optional confirmed deletion. Opening/dismissing never persists a shift. */
 (function (root) {
   'use strict';
   function editorSafe(shift) {
@@ -49,6 +49,12 @@
       open.hidden = true;
     };
     if (options.readOnly) open.onclick();
+    if (options.readOnly && typeof options.deleteMalformed === 'function') {
+      const remove = element('button', 'Delete malformed record');
+      remove.type = 'button';
+      remove.style.cssText = 'margin:12px 12px 0 0;padding:10px;border:1px solid #f87171;border-radius:8px;color:#fca5a5;background:#450a0a;cursor:pointer';
+      remove.onclick = () => { if (options.deleteMalformed(problem.id)) close(); };
+    }
     document.body.appendChild(dialog); dialog.showModal();
   }
   root.CreativeOSProblem = {show};

@@ -133,13 +133,41 @@
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'px-3 py-2 m-1 rounded-lg bg-slate-800 text-amber-300';
         button.textContent = 'Inspect stored item ' + (issue.index + 1) + ': ' + String(issue.record?.title ?? '(no title)') + (issue.key ? ' (' + issue.key + ')' : '') + ' — ' + issue.reason;
-        button.onclick = () => CreativeOSProblem.show(ScheduleIntegrity.problem(issue), () => [issue.record], () => {}, {readOnly: true, title: 'Stored schedule record — read-only'});
+        button.onclick = () => {
+          const expected = JSON.stringify(issue.record);
+          const canDelete = !issue.key && !storageReview.blocked && typeof issue.record?.id === 'string' &&
+            issue.record.id.trim() && state.shifts.filter(record => record?.id === issue.record.id).length === 1;
+          CreativeOSProblem.show(ScheduleIntegrity.problem(issue), () => [issue.record], () => {}, {
+            readOnly: true, title: 'Stored schedule record — read-only',
+            deleteMalformed: canDelete ? id => deleteMalformedRecord(id, expected) : undefined
+          });
+        };
         panel.appendChild(button);
       }
     }
     function scheduleForDisplay() {
       const bad = new Set(ScheduleIntegrity.inspect(state.shifts).map(issue => issue.index));
       return state.shifts.filter((record, index) => !bad.has(index));
+    }
+    function deleteMalformedRecord(id, expected) {
+      function target() {
+        const matches = typeof id === 'string' && id.trim() ? state.shifts.filter(record => record?.id === id) : [];
+        if (storageReview.blocked || matches.length !== 1 || typeof expected !== 'string' ||
+            JSON.stringify(matches[0]) !== expected || !ScheduleIntegrity.inspect(state.shifts).some(issue => issue.record === matches[0])) {
+          alert('Deletion refused. The exact malformed record is missing, changed, valid, ambiguous, or storage needs review. Inspect it again.');
+          return null;
+        }
+        return matches[0];
+      }
+      const record = target();
+      if (!record) return false;
+      const confirmation = 'Delete this malformed record? This removes only the stable ID shown below.\n\n' +
+        [['Title', 'title'], ['Stable ID', 'id'], ['Details', 'details'], ['Room', 'room'], ['Stored start', 'start'], ['Stored end', 'end']]
+          .map(([label, key]) => label + ': ' + (JSON.stringify(record[key]) ?? '(not stored)')).join('\n');
+      if (!confirm(confirmation) || !target()) return false;
+      if (!persist(state.shifts.filter(item => item?.id !== id))) return false;
+      if (state.editingShift?.id === id) state.editingShift = null;
+      render(); return true;
     }
     function persist(next) {
       const keys = ['vet_shifts_backup', 'schedule_sync_shifts'];
