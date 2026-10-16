@@ -13,15 +13,15 @@
       return true;
     } catch { return false; }
   }
-  function show(error, getShifts, openEditor) {
+  function show(error, getShifts, openEditor, options = {}) {
     const problem = error.problemShift;
     const dialog = document.createElement('dialog');
-    dialog.setAttribute('aria-label', 'Creative OS export problem');
+    dialog.setAttribute('aria-label', options.title || 'Creative OS export problem');
     dialog.style.cssText = 'background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:16px;padding:24px;width:560px;max-width:90vw;max-height:85vh;overflow:auto';
     function element(tag, text) {
       const node = document.createElement(tag); node.textContent = text; dialog.appendChild(node); return node;
     }
-    element('h2', 'Creative OS export failed');
+    element('h2', options.title || 'Creative OS export failed');
     const message = element('pre', error.message);
     message.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit';
     const open = element('button', 'Open Problem Shift');
@@ -34,7 +34,7 @@
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     open.onclick = () => {
       const matches = typeof problem.id === 'string' && problem.id.trim() ? getShifts().filter(s => s?.id === problem.id) : [];
-      if (matches.length === 1 && editorSafe(matches[0])) {
+      if (!options.readOnly && matches.length === 1 && editorSafe(matches[0])) {
         close(); openEditor(problem.id); return;
       }
       // Never choose by title or array position, or pass malformed times into the existing editor.
@@ -44,10 +44,11 @@
         ['Legacy date', 'date'], ['Legacy startTime', 'startTime'], ['Legacy endTime', 'endTime']];
       message.textContent = error.message + '\n\nProblem shift — read-only\n' + fields.map(([label, key]) =>
         label + ': ' + (JSON.stringify(record?.[key]) ?? '(not stored)')).join('\n') + '\n\n' +
-        (matches.length !== 1 ? 'This ID is missing or no longer unique. No record was selected for editing.' :
+        (options.readOnly ? 'Historical inspection is read-only. Nothing was saved, corrected or deleted.' : matches.length !== 1 ? 'This ID is missing or no longer unique. No record was selected for editing.' :
           'The stored fields cannot safely open in the current editor. They are shown exactly as stored; nothing was saved or corrected.');
       open.hidden = true;
     };
+    if (options.readOnly) open.onclick();
     document.body.appendChild(dialog); dialog.showModal();
   }
   root.CreativeOSProblem = {show};

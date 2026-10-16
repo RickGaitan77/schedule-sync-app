@@ -92,6 +92,8 @@
   <div id="modal-container"></div>
   <div id="toast-container"></div>
 
+  <div id="integrity-status" class="px-4 py-2" role="status"></div>
+  <script src="shift-integrity.js"></script>
   <script src="creative-os-export.js"></script>
   <script src="creative-os-problem.js"></script>
   <script>
@@ -115,33 +117,76 @@
       return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
     }
 
-    function persist() {
-      try {
-        const payload = JSON.stringify(state.shifts);
-        localStorage.setItem('vet_shifts_backup', payload);
-        localStorage.setItem('schedule_sync_shifts', payload);
-      } catch (err) {
-        console.error('Storage persistence failed:', err);
+    let storageReview = {copies: [], warnings: [], blocked: false};
+    function refreshIntegrity() {
+      const panel = document.getElementById('integrity-status');
+      if (!panel) return;
+      panel.replaceChildren();
+      const issues = ScheduleIntegrity.inspect(state.shifts);
+      const extra = storageReview.blocked ? storageReview.copies.flatMap(copy =>
+        copy.records && copy.records !== state.shifts ? ScheduleIntegrity.inspect(copy.records).map(issue => ({...issue, key: copy.key})) : []) : [];
+      if (!issues.length && !extra.length && !storageReview.warnings.length) return;
+      const label = document.createElement('p');
+      label.textContent = 'Schedule needs attention. Invalid records are preserved and excluded from schedule views; this schedule may be incomplete. ' + storageReview.warnings.join(' ');
+      panel.appendChild(label);
+      for (const issue of [...issues, ...extra]) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'px-3 py-2 m-1 rounded-lg bg-slate-800 text-amber-300';
+        button.textContent = 'Inspect stored item ' + (issue.index + 1) + ': ' + String(issue.record?.title ?? '(no title)') + (issue.key ? ' (' + issue.key + ')' : '') + ' — ' + issue.reason;
+        button.onclick = () => CreativeOSProblem.show(ScheduleIntegrity.problem(issue), () => [issue.record], () => {}, {readOnly: true, title: 'Stored schedule record — read-only'});
+        panel.appendChild(button);
       }
     }
-
-    try {
-      const saved = localStorage.getItem('vet_shifts_backup') || localStorage.getItem('schedule_sync_shifts');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) state.shifts = parsed;
-      }
-    } catch(e) {}
-
-    window.addEventListener('storage', (e) => {
-      if ((e.key === 'vet_shifts_backup' || e.key === 'schedule_sync_shifts') && e.newValue) {
-        try {
-          const updated = JSON.parse(e.newValue);
-          if (Array.isArray(updated)) {
-            state.shifts = updated;
-            render();
+    function scheduleForDisplay() {
+      const bad = new Set(ScheduleIntegrity.inspect(state.shifts).map(issue => issue.index));
+      return state.shifts.filter((record, index) => !bad.has(index));
+    }
+    function persist(next) {
+      const keys = ['vet_shifts_backup', 'schedule_sync_shifts'];
+      let previous;
+      try {
+        if (storageReview.blocked) throw new Error('Stored schedule copies need review. No changes saved; both copies are preserved.');
+        if (!Array.isArray(next)) throw new Error('Invalid schedule update.');
+        for (const record of next) {
+          if (!state.shifts.includes(record)) {
+            ScheduleIntegrity.validate(record);
+            if (next.filter(other => other?.id === record.id).length !== 1) throw new Error('Duplicate shift ID.');
           }
-        } catch (err) {}
+        }
+        const payload = JSON.stringify(next);
+        previous = keys.map(key => localStorage.getItem(key));
+        if (storageReview.copies.some(copy => previous[keys.indexOf(copy.key)] !== copy.raw)) {
+          storageReview.blocked = true; storageReview.warnings = ['Stored schedule changed in another tab. Reload before saving.'];
+          throw new Error(storageReview.warnings[0]);
+        }
+        for (const key of keys) localStorage.setItem(key, payload);
+        state.shifts = next;
+        storageReview = {copies: keys.map(key => ({key, raw: payload, records: next})), warnings: [], blocked: false};
+        refreshIntegrity(); return true;
+      } catch (error) {
+        // localStorage has no multi-key transaction. Restore original bytes on a failed write.
+        if (previous) {
+          for (let i = 0; i < keys.length; i++) {
+            try {
+              if (localStorage.getItem(keys[i]) !== previous[i]) {
+                if (previous[i] === null) localStorage.removeItem(keys[i]);
+                else localStorage.setItem(keys[i], previous[i]);
+              }
+            } catch { storageReview.blocked = true; storageReview.warnings = ['Storage rollback failed. Stop saving and preserve both stored copies for review.']; }
+          }
+        }
+        alert('Schedule was not saved: ' + error.message); refreshIntegrity(); return false;
+      }
+    }
+    function loadStoredSchedule() {
+      try { storageReview = ScheduleIntegrity.readStorage(localStorage); state.shifts = storageReview.records; }
+      catch (error) { storageReview = {copies: [], blocked: true, warnings: ['Storage unavailable: ' + error.message]}; }
+      refreshIntegrity();
+    }
+    loadStoredSchedule();
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'vet_shifts_backup' || e.key === 'schedule_sync_shifts' || e.key === null) {
+        loadStoredSchedule(); state.editingShift = null; render();
       }
     });
 
@@ -168,11 +213,11 @@
         const shiftStrings = decodedData.split('|');
 
         const restored = shiftStrings.map(str => {
-          if (!str) return null;
+          if (!str) return {title: 'Empty incoming QR row'};
           const parts = str.split('~');
           let id, dateStr, sTime, eTime, room, colorCode, title;
 
-          if (parts.length >= 7) {
+          if (parts.length === 7 || parts.length === 8) {
             [id, dateStr, sTime, eTime, room, colorCode, title] = parts;
           } else if (parts.length === 6) {
             const isUrgent = parts[5];
@@ -185,13 +230,13 @@
             colorCode = 'blue';
             title = 'Regular Shift';
           } else {
-            return null;
+            return {title: 'Unrecognized incoming QR row: ' + str};
           }
 
           return {
-            id: id || generateCompactId(),
+            id,
             start: dateStr + 'T' + sTime,
-            end: dateStr + 'T' + eTime,
+            end: (parts.length === 8 ? parts[7] : dateStr) + 'T' + eTime,
             title: title || (colorCode === 'red' ? 'Urgent Care' : colorCode === 'amber' ? 'Surgery' : 'Regular Shift'),
             details: room || '',
             colorCode: colorCode || 'blue',
@@ -201,23 +246,22 @@
             room: room || '',
             urgentCare: colorCode === 'red'
           };
-        }).filter(Boolean);
-
-        if (restored.length > 0) {
-          state.shifts = restored;
-          persist();
-          state.toastMsg = `Synced ${restored.length} shift${restored.length === 1 ? '' : 's'} from PC!`;
-        } else {
-          state.shifts = [];
-          persist();
-          state.toastMsg = 'Schedule cleared from PC.';
+        });
+        const incomingIssues = ScheduleIntegrity.inspect(restored);
+        if (incomingIssues.length) {
+          alert(incomingIssues.map(issue => ScheduleIntegrity.problem(issue, 'Incoming QR record rejected').message).join('\n\n'));
+          return;
         }
+
+        if (!restored.length) throw new Error('Empty incoming schedule was not applied.');
+        if (!persist(restored)) return;
+        state.toastMsg = 'Synced ' + restored.length + ' validated shift(s) from PC!';
 
         window.history.replaceState(null, '', window.location.pathname);
         render();
         setTimeout(() => { state.toastMsg = ''; render(); }, 4000);
       } catch (e) {
-        console.error('Failed to parse schedule QR code:', e);
+        alert('QR import rejected; current schedule unchanged. ' + e.message);
       }
     }
 
@@ -315,7 +359,7 @@
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const allShiftsSorted = [...state.shifts].sort((a, b) => {
+      const allShiftsSorted = scheduleForDisplay().sort((a, b) => {
         const da = parseDateParts(a.start);
         const db = parseDateParts(b.start);
         return new Date(da.y, da.m - 1, da.d, da.h, da.min) - new Date(db.y, db.m - 1, db.d, db.h, db.min);
@@ -482,7 +526,7 @@
       const m = parseInt(state.month) - 1;
       const daysInMonth = new Date(y, m + 1, 0).getDate();
       
-      const monthWorkingShifts = state.shifts.filter(s => {
+      const monthWorkingShifts = scheduleForDisplay().filter(s => {
         const p = parseDateParts(s.start);
         return (p.m - 1) === m && p.y === y;
       }).sort((a,b) => {
@@ -723,6 +767,8 @@
             if (!container) return;
             container.innerHTML = '';
 
+            const qrIssues = ScheduleIntegrity.inspect(state.shifts);
+            if (qrIssues.length) throw new Error(ScheduleIntegrity.problem(qrIssues[0], 'QR export blocked').message);
             const compactString = state.shifts.map(s => {
               let datePart = s.date || '';
               let startTime = s.startTime || '';
@@ -743,7 +789,7 @@
               const cleanTitle = (s.title || 'Regular Shift').replace(/[~|]/g, '-');
               const room = (s.details || s.room || '').replace(/[~|]/g, '-');
               const shiftId = (s.id || generateCompactId()).replace(/[~|]/g, '_');
-              return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${cCode}~${cleanTitle}`;
+              return `${shiftId}~${datePart}~${startTime}~${endTime}~${room}~${cCode}~${cleanTitle}~${s.end.split('T')[0]}`;
             }).filter(Boolean).join('|');
 
             const syncUrl = window.location.origin + window.location.pathname + '#sync=' + encodeURIComponent(compactString);
@@ -764,7 +810,8 @@
               level: 'L'
             });
           } catch (err) {
-            console.error("QR Error:", err);
+            const output = document.getElementById('qrcode');
+            if (output) output.textContent = 'QR export failed: ' + err.message;
           }
         }, 50);
       }
@@ -802,6 +849,7 @@
         renderSchedule(mainContent);
       }
 
+      refreshIntegrity();
       renderModals();
       renderToast();
       lucide.createIcons();
@@ -842,10 +890,6 @@
       const sVal = document.getElementById('add-start').value;
       const eVal = document.getElementById('add-end').value;
 
-      if (new Date(eVal) <= new Date(sVal)) {
-        alert('End time must be after start time.');
-        return;
-      }
 
       const chosenColor = document.getElementById('add-color').value;
       const titleVal = document.getElementById('add-title').value.trim() || 'Regular Shift';
@@ -866,8 +910,7 @@
         urgentCare: chosenColor === 'red'
       };
 
-      state.shifts.push(newShift);
-      persist();
+      if (!persist([...state.shifts, newShift])) return;
 
       state.showAddModal = false;
       state.toastMsg = `Added ${titleVal} to schedule!`;
@@ -1038,7 +1081,7 @@
           text = text.replace(/\bfour\b/g, '4');
           text = text.replace(/\bfive\b/g, '5');
 
-          const dateRegex = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+the)?\s+\d{1,2}(?:st|nd|rd|th)?|(?:on\s+)?(?:the\s+)?\d{1,2}(?:st|nd|rd|th))\b/gi;
+          const dateRegex = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?|(?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|^\d{1,2}-\d{1,2}(?:-\d{2,4})?)|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+the)?\s+\d{1,2}(?:st|nd|rd|th)?|(?:on\s+)?(?:the\s+)?\d{1,2}(?:st|nd|rd|th))\b/gi;
 
           let matches = [...text.matchAll(dateRegex)];
           let chunks = [];
@@ -1060,43 +1103,56 @@
             chunks.push(text);
           }
 
-          const currentYear = parseInt(state.year) || new Date().getFullYear();
+          const currentYear = /^\d{4}$/.test(state.year) ? Number(state.year) : NaN;
           let currentMonth = parseInt(state.month) - 1;
           let newShiftsCount = 0;
           let skippedCount = 0;
+          const rejected = [];
+          const candidates = [];
 
           chunks.forEach(chunk => {
             chunk = chunk.trim();
             if (!chunk) return;
 
             let day = null;
+            let recordYear = currentYear;
+            let recordMonth = currentMonth;
             
             const monthMatch = chunk.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
             if (monthMatch) {
               const mStr = monthMatch[1].toLowerCase();
               const monthMap = { jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3, may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7, sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11 };
-              if (monthMap[mStr] !== undefined) currentMonth = monthMap[mStr];
+              if (monthMap[mStr] !== undefined) recordMonth = monthMap[mStr];
             } else {
-               const numMatch = chunk.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
-               if (numMatch) currentMonth = parseInt(numMatch[1]) - 1;
+               const numMatch = chunk.match(/^(?:on\s+)?(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+               if (numMatch) recordMonth = parseInt(numMatch[1]) - 1;
             }
 
-            const numMatch = chunk.match(/\b\d{1,2}[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?\b/);
+            const numMatch = chunk.match(/^(?:on\s+)?\d{1,2}[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?\b/);
             const ordinalMatch = chunk.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
-            const plainDayMatch = chunk.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\b/i);
+            const plainDayMatch = chunk.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(\d{4}))?\b/i);
 
             if (numMatch) day = parseInt(numMatch[1]);
             else if (ordinalMatch) day = parseInt(ordinalMatch[1]);
             else if (plainDayMatch) day = parseInt(plainDayMatch[1]);
+            else {
+              const weekdayDay = chunk.match(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+the)?\s+(\d{1,2})\b/);
+              if (weekdayDay) day = Number(weekdayDay[1]);
+            }
 
-            const timeMatch = chunk.match(/\b(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\b/i);
+            const numericDate = chunk.match(/^(?:on\s+)?(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+            if (numericDate?.[3]) recordYear = numericDate[3].length === 4 ? Number(numericDate[3]) : NaN;
+            else if (plainDayMatch?.[2]) recordYear = Number(plainDayMatch[2]);
+            const timeText = numericDate ? chunk.replace(numericDate[0], '') : chunk;
+            const timeMatch = timeText.match(/(?<![\d:])(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?\s*-\s*(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?(?![\d:])/i);
 
             if (!timeMatch) {
-              if (day !== null || chunk.length > 8) skippedCount++;
+              if (day !== null || chunk.length > 8) { skippedCount++; rejected.push(chunk + ' — missing or malformed time range'); }
               return;
             }
             
-            if (day === null) day = new Date().getDate();
+            try { ScheduleIntegrity.date(recordYear, recordMonth + 1, day); }
+            catch (error) { skippedCount++; rejected.push(chunk + ' — ' + error.message); return; }
 
             let startH = parseInt(timeMatch[1], 10);
             let startM = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
@@ -1106,22 +1162,22 @@
             let endM = timeMatch[5] ? parseInt(timeMatch[5], 10) : 0;
             let endPeriod = timeMatch[6] ? timeMatch[6].toLowerCase() : null;
 
-            if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM) || isNaN(day)) {
-              skippedCount++;
-              return;
-            }
+            try {
+              ScheduleIntegrity.clock(startH, startM, startPeriod);
+              ScheduleIntegrity.clock(endH, endM, endPeriod);
+            } catch (error) { skippedCount++; rejected.push(chunk + ' — ' + error.message); return; }
 
             const isNightShift = /\b(?:night|overnight|graveyard)\b/i.test(chunk);
 
             if (isNightShift) {
-              if (!startPeriod && startH >= 1 && startH <= 11) startPeriod = 'pm';
-              if (!endPeriod && endH >= 1 && endH <= 11) endPeriod = 'am';
+              if (!startPeriod && !timeMatch[2] && startH >= 1 && startH <= 11) startPeriod = 'pm';
+              if (!endPeriod && !timeMatch[5] && endH >= 1 && endH <= 11) endPeriod = 'am';
             } else {
-              if (!startPeriod) {
+              if (!startPeriod && !timeMatch[2]) {
                 if (startH >= 6 && startH <= 11) startPeriod = 'am';
                 else if (startH === 12 || startH < 6) startPeriod = 'pm';
               }
-              if (!endPeriod) {
+              if (!endPeriod && !timeMatch[5]) {
                 if (endH >= 1 && endH <= 11) endPeriod = 'pm';
                 else if (endH === 12) endPeriod = 'pm';
               }
@@ -1133,15 +1189,18 @@
             if (endPeriod && endPeriod.startsWith('p') && endH < 12) endH += 12;
             if (endPeriod && endPeriod.startsWith('a') && endH === 12) endH = 0;
 
-            let endYear = currentYear;
-            let endMonth = currentMonth;
+            try { ScheduleIntegrity.clock(startH, startM); ScheduleIntegrity.clock(endH, endM); }
+            catch (error) { skippedCount++; rejected.push(chunk + ' — ' + error.message); return; }
+            let endYear = recordYear;
+            let endMonth = recordMonth;
             let endDay = day;
 
             if ((endH * 60 + endM) < (startH * 60 + startM)) {
-              const nextDayDate = new Date(currentYear, currentMonth, day + 1);
-              endYear = nextDayDate.getFullYear();
-              endMonth = nextDayDate.getMonth();
-              endDay = nextDayDate.getDate();
+              if (!isNightShift) { skippedCount++; rejected.push(chunk + ' — end precedes start; explicitly mark overnight work'); return; }
+              const nextDayDate = new Date(Date.UTC(recordYear, recordMonth, day + 1));
+              endYear = nextDayDate.getUTCFullYear();
+              endMonth = nextDayDate.getUTCMonth();
+              endDay = nextDayDate.getUTCDate();
             }
 
             let details = '';
@@ -1172,13 +1231,13 @@
             }
 
             const pad = n => n.toString().padStart(2, '0');
-            const dateStr = `${currentYear}-${pad(currentMonth + 1)}-${pad(day)}`;
+            const dateStr = `${recordYear}-${pad(recordMonth + 1)}-${pad(day)}`;
             const sTimeStr = `${pad(startH)}:${pad(startM)}`;
             const eTimeStr = `${pad(endH)}:${pad(endM)}`;
             const startIso = `${dateStr}T${sTimeStr}`;
             const endIso = `${endYear}-${pad(endMonth + 1)}-${pad(endDay)}T${eTimeStr}`;
 
-            state.shifts.push({
+            const candidate = {
               id: generateCompactId(),
               title: title,
               details: details,
@@ -1190,19 +1249,23 @@
               endTime: eTimeStr,
               room: details,
               urgentCare: colorCode === 'red'
-            });
-            newShiftsCount++;
+            };
+            try { ScheduleIntegrity.validate(candidate); candidates.push(candidate); currentMonth = recordMonth; }
+            catch (error) { skippedCount++; rejected.push(chunk + ' — ' + error.message); }
           });
 
-          state.transcript = '';
+          if (candidates.length && !persist([...state.shifts, ...candidates])) {
+            state.isProcessing = false; state.statusMsg = ''; render(); return;
+          }
+          newShiftsCount = candidates.length;
+          if (!skippedCount) state.transcript = '';
           state.isProcessing = false;
           state.statusMsg = '';
           
           let toast = `Successfully added ${newShiftsCount} shift${newShiftsCount === 1 ? '' : 's'}.`;
-          if (skippedCount > 0) toast += ` (${skippedCount} skipped: missing hours)`;
+          if (skippedCount > 0) { toast += ' (' + skippedCount + ' rejected; see diagnostic)'; alert('Not saved from dictation:\n' + rejected.join('\n')); }
           state.toastMsg = toast;
           
-          persist();
           render();
 
           setTimeout(() => {
@@ -1230,7 +1293,12 @@
     };
 
     window.editShift = function(id) {
-      state.editingShift = state.shifts.find(s => s.id === id);
+      const matches = state.shifts.filter(s => s?.id === id);
+      const issues = matches.length === 1 ? ScheduleIntegrity.inspect(matches).filter(issue => issue.field !== 'interval') : [{index: 0, record: matches[0], field: 'id', reason: 'Shift identity is not unique.'}];
+      if (issues.length) {
+        CreativeOSProblem.show(ScheduleIntegrity.problem(issues[0]), () => matches, () => {}, {readOnly: true, title: 'Stored schedule record — read-only'}); return;
+      }
+      state.editingShift = matches[0];
       render();
     };
 
@@ -1240,8 +1308,7 @@
     };
 
     window.removeShift = function(id) {
-      state.shifts = state.shifts.filter(s => s.id !== id);
-      persist();
+      if (!persist(state.shifts.filter(s => s?.id !== id))) return;
       render();
     };
 
@@ -1252,25 +1319,22 @@
       const sVal = document.getElementById('edit-start').value;
       const eVal = document.getElementById('edit-end').value;
 
-      if (new Date(eVal) <= new Date(sVal)) {
-        alert('End time must be after start time.');
-        return;
-      }
       
       const chosenColor = document.getElementById('edit-color').value;
-      state.editingShift.colorCode = chosenColor;
-      state.editingShift.title = document.getElementById('edit-title').value;
-      state.editingShift.details = document.getElementById('edit-details').value;
-      state.editingShift.start = sVal;
-      state.editingShift.end = eVal;
+      const edited = {...state.editingShift};
+      edited.colorCode = chosenColor;
+      edited.title = document.getElementById('edit-title').value;
+      edited.details = document.getElementById('edit-details').value;
+      edited.start = sVal;
+      edited.end = eVal;
 
       const sParts = sVal.split('T');
-      state.editingShift.date = sParts[0];
-      state.editingShift.startTime = sParts[1];
-      state.editingShift.endTime = eVal.split('T')[1];
+      edited.date = sParts[0];
+      edited.startTime = sParts[1];
+      edited.endTime = eVal.split('T')[1];
       
-      state.shifts = state.shifts.map(s => s.id === state.editingShift.id ? state.editingShift : s);
-      persist();
+      if (state.shifts.filter(s => s?.id === edited.id).length !== 1) { alert('Shift identity is no longer unique. No changes saved.'); return; }
+      if (!persist(state.shifts.map(s => s.id === edited.id ? edited : s))) return;
       
       state.editingShift = null;
       render();
