@@ -22,7 +22,7 @@ function harness(shifts) {
   const body=new Element('body');
   const state={shifts,editingShift:null}; let renders=0;
   const forbidden=()=>assert.fail('Diagnostics must not persist, save, delete or download');
-  const context={document:{body,createElement:tag=>new Element(tag)}, state, window:{}, CreativeOSExport:exporter,
+  const context={document:{body,createElement:tag=>new Element(tag)}, state, window:{}, CreativeOSExport:exporter, ScheduleIntegrity: require('./shift-integrity.js'),
     render:()=>renders++, localStorage:{getItem:()=>metadata.source_instance_id,setItem:forbidden,removeItem:forbidden},
     persist:forbidden, prompt:()=>metadata.source_timezone, crypto:{randomUUID:()=>metadata.snapshot_id}, alert:forbidden,
     URL:{createObjectURL:forbidden}};
