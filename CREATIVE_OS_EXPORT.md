@@ -1,0 +1,13 @@
+# Creative OS snapshot export v1
+
+Use **Export for Creative OS** in the browser that contains your current schedule. Confirm the source IANA timezone and save the JSON. Import it manually in Creative OS → Daily → Schedule Sync. Export again after changes; browser download copies with a new filename must be selected explicitly. This is not a live connection.
+
+This action reads the complete in-memory shift list, preserves its IDs and full start/end dates, and downloads JSON. It does not call `persist()`, modify shifts, run QR sync, ingest Slack or export/write Apple Calendar. The only browser write is a separate persistent dataset UUID under `schedule_sync_creative_os_instance_v1`. Clearing storage or changing browser/origin creates a different identity; Creative OS refuses to silently replace an existing instance. Use this current GitHub app; never use the outdated desktop copy.
+
+Envelope: `schema_version: 1`, `source: "schedule-sync"`, canonical UUID `source_instance_id` and `snapshot_id`, UTC `exported_at`, explicit IANA `source_timezone`, `complete: true`, and `shifts`. Each shift contains original `id`, `type: "work_shift"`, `title`, `details`, `colorCode`, full `start` and `end`. Empty complete exports require explicit confirmation. No visible month/filter is applied. Maximum 10,000 shifts / 5 MiB JSON. ID/title/details/colorCode limits are 200/500/4000/40 characters. Missing/duplicate IDs, invalid dates, reversed intervals, DST gaps/folds without a valid offset, or offsets mismatching the named zone prevent export. No IDs or upstream update/cancellation timestamps are invented. For an overnight shift the end must include its actual following date; the existing QR path is unchanged and can lose that end date.
+
+Creative OS preserves source identity, treats identical reimports as a no-op, updates same-ID shifts, and reconciles missing IDs only from a strictly newer complete snapshot of the same instance. It reports export/import time, item count and stale/unavailable state. It cannot cryptographically prove a manually edited JSON is complete: use this explicit exporter and keep the file intact. Imported records are read-only, labeled Schedule Sync, and do not become locally editable shifts. No scheduled refresh or runtime GitHub reads exist.
+
+Focused producer validation: `node --test test-creative-os-export.cjs`. Tests cover the pure exporter and actual download handler with stubbed browser I/O, including no shift mutation and persistent bridge identity. They do not alter real browser data or validate a real user's current schedule.
+
+Rollback is independent of Creative OS: revert this export-only change in this repository. Existing shift storage, editing, QR and calendar export behavior is preserved.
