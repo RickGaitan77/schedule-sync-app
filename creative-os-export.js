@@ -35,7 +35,10 @@
   function build(shifts, metadata) {
     if (!Array.isArray(shifts) || shifts.length > 10000) throw new Error('Invalid shift count.');
     const ids = new Set();
-    const rows = shifts.map(s => {
+    const rows = shifts.map(original => {
+      // Older saved rows can contain room/urgentCare without their newer aliases.
+      const s = {...original, details: original.details ?? original.room ?? '',
+        colorCode: original.colorCode ?? (original.urgentCare ? 'red' : 'blue')};
       for (const [key, limit] of [['id', 200], ['title', 500], ['details', 4000], ['colorCode', 40]]) {
         if (typeof s[key] !== 'string' || s[key].length > limit || (['id', 'title'].includes(key) && !s[key].trim()))
           throw new Error('Missing or invalid shift ' + key + '. No IDs are generated during export.');

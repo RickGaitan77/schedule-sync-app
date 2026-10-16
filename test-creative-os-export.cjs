@@ -13,6 +13,10 @@ test('complete versioned export preserves IDs, details, all dates and all catego
   assert.equal(value.shifts.length, 4); assert.equal(value.shifts[0].end, '2026-10-17T06:00');
   assert.equal(value.shifts[0].details, input[0].details); assert.equal(value.shifts[0].type, 'work_shift');
   assert.deepEqual(build([], meta).shifts, []);
+  const legacy = shift({details: undefined, colorCode: undefined, room: 'Room 4', urgentCare: true});
+  const exported = build([legacy], meta).shifts[0];
+  assert.equal(exported.details, 'Room 4'); assert.equal(exported.colorCode, 'red');
+  assert.equal(legacy.details, undefined); assert.equal(legacy.colorCode, undefined);
 });
 test('DST gaps, folds, invalid dates and offset mismatch fail; valid explicit folds work', () => {
   for (const date of ['2026-03-08T02:30', '2026-11-01T01:30', '2026-02-30T12:00', '2026-10-16T08:00-06:00'])
